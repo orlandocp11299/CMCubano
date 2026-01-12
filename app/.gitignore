@@ -1,0 +1,59 @@
+/build# Android / Gradle
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar  # Mantén el wrapper si lo usas
+
+# Archivos locales de configuración
+local.properties
+
+# Archivos generados por Android/Gradle
+*.apk
+*.ap_
+*.dex
+*.class
+*.aab
+bin/
+gen/
+out/
+*.jar  # Si no quieres subir libs compiladas
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+/.idea/workspace.xml
+/.idea/libraries
+/.idea/caches
+/.idea/modules.xml  # Opcional: si no quieres compartir módulos
+
+# Capturas y temporales
+captures/
+.navigation/
+.DS_Store  # Si usas Mac a veces
+Thumbs.db  # Windows thumbnails
+
+# NDK / Native
+.cxx/
+.externalNativeBuild/
+*.so
+*.o
+obj/
+
+# Logs y crashes
+*.log
+hs_err_pid*
+
+# Opcional: si no quieres subir keystores o secrets
+*.jks
+*.keystore
+# Específicos de tu lista que no deberían subirse
+*.zip
+*.rar
+/CM Cubano Save/
+
+# Archivos de VS Code (ya que vi la carpeta .vscode)
+.vscode/
+
+# Configuración específica de dispositivos en Android Studio
+.idea/deploymentTargetSelector.xml
+.idea/deviceManager.xml
+.idea/appInsightsSettings.xml

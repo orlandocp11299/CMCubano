@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">CM Cubano</string>
+    <string name="notification_title">Mañana vencen tus recursos</string>
+    <string name="notification_content">Los recursos comprados en tu sim están a punto de vencerse</string>
+    <string name="notification_channel_name">Vencimiento de Recursos</string>
+    <string name="notification_channel_description">Notificaciones sobre vencimiento de recursos móviles</string>
+    <string name="sms_permission_required">Se requieren permisos de SMS para detectar compras de planes</string>
+    <string name="notification_permission_required">Se requieren permisos de notificación para recibir recordatorios</string>
+</resources>
