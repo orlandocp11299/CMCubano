@@ -28,7 +28,7 @@ fun PlanesMenuScreen(navController: NavController) {
     val menuItems = listOf(
         MenuCardItem(
             "Compra de Planes y Paquetes",
-            "Datos, Voz, SMS",
+            "Datos, Voz y SMS",
             Icons.Default.ShoppingCart,
             Color(0xFFFF9800),
             "planes_list"
