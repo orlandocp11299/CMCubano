@@ -2097,7 +2097,7 @@ private fun getCellRows(
             // Lógica de Badge con Jerarquía: PhysicalChannelConfig > Bandwidths
             val bwComponents = mutableListOf<BwComponent>()
             var bwTotalStr: String? = null
-            
+
             // Calculamos Ancho de Banda aunque los datos estén apagados
             val ccCount = when {
                 !isDataEnabled -> 1
@@ -2109,68 +2109,202 @@ private fun getCellRows(
                 badgeText = "${ccCount}CC"
             }
 
-            // Cálculo de Ancho de Banda
+// Cálculo de Ancho de Banda (Estilo Pro) - EMPAREJAMIENTO CORRECTO
             var totalBandwidthKhz = 0
+
+            // Paso 1: Crear mapa de celdas LTE con información completa
+            data class CellInfo(val earfcn: Int, val pci: Int, val band: Int, val isRegistered: Boolean)
+            val cellsMap = lteCells.mapNotNull { cell ->
+                val earfcn = cell.cellIdentity.earfcn
+                val pci = cell.cellIdentity.pci
+                if (earfcn > 0 && earfcn != Int.MAX_VALUE && pci >= 0 && pci != Int.MAX_VALUE) {
+                    val bandStr = getLteBand(earfcn)
+                    val bandNum = bandStr.replace("Band ", "").toIntOrNull() ?: 0
+                    if (bandNum in 1..88) {
+                        CellInfo(earfcn, pci, bandNum, cell.isRegistered)
+                    } else null
+                } else null
+            }
+
+            // Paso 2: Crear lista de componentes BW con emparejamiento PCI/EARFCN
+            data class BwCandidate(val band: Int, val bwMhz: Int, val pci: Int?, val earfcn: Int?, val index: Int)
+            val bwCandidates = mutableListOf<BwCandidate>()
+
             if (physicalConfigList.isNotEmpty()) {
-                // Si los datos están desactivados,solo tomamos la portadora primaria (la primera)
                 val configsToProcess = if (isDataEnabled) physicalConfigList else physicalConfigList.take(1)
 
                 configsToProcess.forEachIndexed { index, config ->
                     val bwKhz = config.cellBandwidthDownlinkKhz
                     if (bwKhz > 0 && bwKhz != Int.MAX_VALUE) {
                         val bwMhz = bwKhz / 1000
-                        var bandNum = config.band
+                        var bandNum = 0
+                        var pciFromConfig: Int? = null
+                        var earfcnFromConfig: Int? = null
 
-                        // CORRECCIÓN PRINCIPAL: Validar si la banda es realmente válida
-                        // Bandas LTE válidas van de 1 a 88 (la mayoría están entre 1-46)
-                        val isBandValid = bandNum in 1..88
+                        // Extraer PCI del PhysicalChannelConfig (si está disponible)
+                        try {
+                            pciFromConfig = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                val pci = config.physicalCellId
+                                if (pci != Int.MAX_VALUE && pci >= 0) pci else null
+                            } else null
+                        } catch (e: Exception) {
+                            pciFromConfig = null
+                        }
 
-                        if (!isBandValid) {
-                            // Si la banda no es válida, intentar obtenerla de la celda correspondiente
-                            if (index < lteCells.size) {
-                                // Usar la celda correspondiente según el índice
-                                val cellForThisBand = lteCells.getOrNull(index)
-                                if (cellForThisBand != null) {
-                                    bandNum = getLteBand(cellForThisBand.cellIdentity.earfcn)
-                                        .replace("Band ", "")
-                                        .toIntOrNull() ?: 0
+// Extraer EARFCN del PhysicalChannelConfig
+                        try {
+                            earfcnFromConfig = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                try {
+                                    val channelNum = config.downlinkChannelNumber
+                                    if (channelNum > 0 && channelNum != Int.MAX_VALUE) channelNum else null
+                                } catch (e: Exception) {
+                                    null
                                 }
+                            } else null
+                        } catch (e: Exception) {
+                            earfcnFromConfig = null
+                        }
+
+                        // MÉTODO 1: config.band directo
+                        if (config.band in 1..88) {
+                            bandNum = config.band
+                        }
+
+                        // MÉTODO 2: Buscar por PCI coincidente
+                        if (bandNum == 0 && pciFromConfig != null) {
+                            val matchingCell = cellsMap.firstOrNull { it.pci == pciFromConfig }
+                            if (matchingCell != null) {
+                                bandNum = matchingCell.band
+                            }
+                        }
+
+                        // MÉTODO 3: Buscar por EARFCN coincidente
+                        if (bandNum == 0 && earfcnFromConfig != null) {
+                            val matchingCell = cellsMap.firstOrNull { it.earfcn == earfcnFromConfig }
+                            if (matchingCell != null) {
+                                bandNum = matchingCell.band
                             } else {
-                                // Fallback: si no hay celda correspondiente, usar primaria
-                                if (lteCells.isNotEmpty()) {
-                                    bandNum = getLteBand(lteCells[0].cellIdentity.earfcn)
-                                        .replace("Band ", "")
-                                        .toIntOrNull() ?: 0
+                                // Si no hay celda con ese EARFCN, calcular banda del EARFCN
+                                val bandStr = getLteBand(earfcnFromConfig)
+                                val parsedBand = bandStr.replace("Band ", "").toIntOrNull() ?: 0
+                                if (parsedBand in 1..88) {
+                                    bandNum = parsedBand
                                 }
                             }
                         }
 
-                        val bandName = if (bandNum > 0) "B$bandNum" else "Bx"
-                        bwComponents.add(BwComponent(bandName, "${bwMhz}MHz"))
-                        totalBandwidthKhz += bwKhz
+                        // MÉTODO 4: Reflexión para campos ocultos
+                        if (bandNum == 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            try {
+                                val bandMethod = config.javaClass.getDeclaredMethod("getBand")
+                                bandMethod.isAccessible = true
+                                val hiddenBand = bandMethod.invoke(config) as? Int
+                                if (hiddenBand != null && hiddenBand in 1..88) {
+                                    bandNum = hiddenBand
+                                }
+                            } catch (e: Exception) {
+                                // Ignorar
+                            }
+                        }
+
+                        // MÉTODO 5: Parsing del toString()
+                        if (bandNum == 0) {
+                            try {
+                                val configStr = config.toString()
+
+                                // Buscar banda
+                                val bandRegex = """(?:band|mBand|Band)\s*[:=]\s*(\d+)""".toRegex(RegexOption.IGNORE_CASE)
+                                val match = bandRegex.find(configStr)
+                                if (match != null) {
+                                    val parsedBand = match.groupValues[1].toIntOrNull() ?: 0
+                                    if (parsedBand in 1..88) {
+                                        bandNum = parsedBand
+                                    }
+                                }
+
+                                // Buscar PCI si no lo tenemos
+                                if (pciFromConfig == null) {
+                                    val pciRegex = """(?:pci|physicalCellId|cellId)\s*[:=]\s*(\d+)""".toRegex(RegexOption.IGNORE_CASE)
+                                    val pciMatch = pciRegex.find(configStr)
+                                    if (pciMatch != null) {
+                                        val parsedPci = pciMatch.groupValues[1].toIntOrNull()
+                                        if (parsedPci != null && parsedPci >= 0 && parsedPci < 504) {
+                                            pciFromConfig = parsedPci
+                                            // Reintentar buscar por PCI
+                                            val matchingCell = cellsMap.firstOrNull { it.pci == parsedPci }
+                                            if (matchingCell != null && bandNum == 0) {
+                                                bandNum = matchingCell.band
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Buscar EARFCN si no lo tenemos
+                                if (earfcnFromConfig == null && bandNum == 0) {
+                                    val earfcnRegex = """(?:earfcn|channel|arfcn)\s*[:=]\s*(\d+)""".toRegex(RegexOption.IGNORE_CASE)
+                                    val earfcnMatch = earfcnRegex.find(configStr)
+                                    if (earfcnMatch != null) {
+                                        val parsedEarfcn = earfcnMatch.groupValues[1].toIntOrNull()
+                                        if (parsedEarfcn != null && parsedEarfcn > 0) {
+                                            earfcnFromConfig = parsedEarfcn
+                                            val bandStr = getLteBand(parsedEarfcn)
+                                            val parsedBand = bandStr.replace("Band ", "").toIntOrNull() ?: 0
+                                            if (parsedBand in 1..88) {
+                                                bandNum = parsedBand
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                // Ignorar
+                            }
+                        }
+
+                        // Agregar candidato (incluso si bandNum = 0, lo resolveremos después)
+                        bwCandidates.add(BwCandidate(bandNum, bwMhz, pciFromConfig, earfcnFromConfig, index))
                     }
                 }
             } else if (bandwidths.isNotEmpty()) {
-                // Fallback a ServiceState - TAMBIÉN NECESITA CORRECCIÓN
+                // Fallback para Android antiguo
                 val bwsToProcess = if (isDataEnabled) bandwidths.toList() else bandwidths.take(1)
 
                 bwsToProcess.forEachIndexed { index, bwKhz ->
                     if (bwKhz > 0 && bwKhz != Int.MAX_VALUE) {
                         val bwMhz = bwKhz / 1000
-
-                        // CORRECCIÓN: Usar el índice para mapear a la celda correcta
-                        val bandName = if (index < lteCells.size) {
-                            val cellForThisBand = lteCells[index]
-                            "B" + getLteBand(cellForThisBand.cellIdentity.earfcn).replace("Band ", "")
-                        } else if (index == 0 && lteCells.isNotEmpty()) {
-                            "B" + getLteBand(lteCells[0].cellIdentity.earfcn).replace("Band ", "")
-                        } else {
-                            "Bx"
-                        }
-
-                        bwComponents.add(BwComponent(bandName, "${bwMhz}MHz"))
-                        totalBandwidthKhz += bwKhz
+                        val bandNum = if (index < cellsMap.size) cellsMap[index].band else 0
+                        bwCandidates.add(BwCandidate(bandNum, bwMhz, null, null, index))
                     }
+                }
+            }
+
+// Paso 3: Asignar bandas faltantes usando celdas disponibles no usadas
+            val usedBands = bwCandidates.filter { it.band > 0 }.map { it.band }.toMutableSet()
+            val availableCells = cellsMap.filter { it.band !in usedBands }.sortedByDescending { it.isRegistered }
+
+            bwCandidates.forEachIndexed { idx, candidate ->
+                if (candidate.band == 0 && availableCells.isNotEmpty()) {
+                    // Asignar la primera celda disponible
+                    val cellToUse = availableCells.firstOrNull()
+                    if (cellToUse != null) {
+                        bwCandidates[idx] = candidate.copy(band = cellToUse.band)
+                        usedBands.add(cellToUse.band)
+                        availableCells.toMutableList().remove(cellToUse)
+                    }
+                }
+            }
+
+// Paso 4: Construir componentes BW finales
+            bwCandidates.forEach { candidate ->
+                val bandName = if (candidate.band > 0) "B${candidate.band}" else "Bx"
+                bwComponents.add(BwComponent(bandName, "${candidate.bwMhz}MHz"))
+                totalBandwidthKhz += candidate.bwMhz * 1000
+
+                // Debug log
+                if (bandName == "Bx") {
+                    println("⚠️ BW[${candidate.index}]: No detectado (${candidate.bwMhz}MHz)")
+                    println("   - PCI: ${candidate.pci}")
+                    println("   - EARFCN: ${candidate.earfcn}")
+                    println("   - Celdas disponibles: ${cellsMap.size}")
                 }
             }
 
