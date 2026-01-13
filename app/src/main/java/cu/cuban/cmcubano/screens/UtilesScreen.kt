@@ -2082,7 +2082,7 @@ private fun getCellRows(
         lteCells.any { it.isRegistered } -> {
             var badgeText = "LTE"
             
-            // MÉTODO PROFESIONAL (NetMonster/NSG style):
+            // MÉTODO (NetMonster/NSG style):
             // 1. Usar DisplayInfo para detección instantánea del estado lógico de CA (LTE+)
             val isDisplayCa = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && displayInfo != null) {
                 displayInfo.overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_CA ||
@@ -2109,56 +2109,75 @@ private fun getCellRows(
                 badgeText = "${ccCount}CC"
             }
 
-            // Cálculo de Ancho de Banda (Estilo Pro)
+            // Cálculo de Ancho de Banda
             var totalBandwidthKhz = 0
             if (physicalConfigList.isNotEmpty()) {
                 // Si los datos están desactivados, solo tomamos la portadora primaria (la primera)
                 val configsToProcess = if (isDataEnabled) physicalConfigList else physicalConfigList.take(1)
-                configsToProcess.forEach { config ->
+
+                configsToProcess.forEachIndexed { index, config ->
                     val bwKhz = config.cellBandwidthDownlinkKhz
                     if (bwKhz > 0 && bwKhz != Int.MAX_VALUE) {
-                         val bwMhz = bwKhz / 1000
-                         var bandNum = config.band
-                         
-                         // Si la banda es inválida, intentamos inferirla de la primaria
-                         if (bandNum <= 0 || bandNum > 256) {
-                              if (lteCells.isNotEmpty()) {
-                                  bandNum = getLteBand(lteCells[0].cellIdentity.earfcn).replace("Band ", "").toIntOrNull() ?: 0
-                              }
-                         }
-                         
-                         val bandName = if (bandNum > 0) "B$bandNum" else "Bx"
-                         bwComponents.add(BwComponent(bandName, "${bwMhz}MHz"))
-                         totalBandwidthKhz += bwKhz
+                        val bwMhz = bwKhz / 1000
+                        var bandNum = config.band
+
+                        // CORRECCIÓN PRINCIPAL: Validar si la banda es realmente válida
+                        // Bandas LTE válidas van de 1 a 88 (la mayoría están entre 1-46)
+                        val isBandValid = bandNum in 1..88
+
+                        if (!isBandValid) {
+                            // Si la banda no es válida, intentar obtenerla de la celda correspondiente
+                            if (index < lteCells.size) {
+                                // Usar la celda correspondiente según el índice
+                                val cellForThisBand = lteCells.getOrNull(index)
+                                if (cellForThisBand != null) {
+                                    bandNum = getLteBand(cellForThisBand.cellIdentity.earfcn)
+                                        .replace("Band ", "")
+                                        .toIntOrNull() ?: 0
+                                }
+                            } else {
+                                // Fallback: si no hay celda correspondiente, usar primaria
+                                if (lteCells.isNotEmpty()) {
+                                    bandNum = getLteBand(lteCells[0].cellIdentity.earfcn)
+                                        .replace("Band ", "")
+                                        .toIntOrNull() ?: 0
+                                }
+                            }
+                        }
+
+                        val bandName = if (bandNum > 0) "B$bandNum" else "Bx"
+                        bwComponents.add(BwComponent(bandName, "${bwMhz}MHz"))
+                        totalBandwidthKhz += bwKhz
                     }
                 }
             } else if (bandwidths.isNotEmpty()) {
-                // Fallback a ServiceState
-                // Si los datos están desactivados, solo tomamos la primera portadora
+                // Fallback a ServiceState - TAMBIÉN NECESITA CORRECCIÓN
                 val bwsToProcess = if (isDataEnabled) bandwidths.toList() else bandwidths.take(1)
+
                 bwsToProcess.forEachIndexed { index, bwKhz ->
                     if (bwKhz > 0 && bwKhz != Int.MAX_VALUE) {
                         val bwMhz = bwKhz / 1000
-                        val bandName = if (index == 0 && lteCells.isNotEmpty()) {
-                            "B" + getLteBand(lteCells[0].cellIdentity.earfcn).replace("Band ", "")
-                        } else if (lteCells.isNotEmpty()) {
-                             // Para secundarios en ServiceState, como último recurso asumimos la misma banda que la primaria
-                             // si solo hay una banda LTE activa en el sector (común en CA intra-banda)
+
+                        // CORRECCIÓN: Usar el índice para mapear a la celda correcta
+                        val bandName = if (index < lteCells.size) {
+                            val cellForThisBand = lteCells[index]
+                            "B" + getLteBand(cellForThisBand.cellIdentity.earfcn).replace("Band ", "")
+                        } else if (index == 0 && lteCells.isNotEmpty()) {
                             "B" + getLteBand(lteCells[0].cellIdentity.earfcn).replace("Band ", "")
                         } else {
                             "Bx"
                         }
+
                         bwComponents.add(BwComponent(bandName, "${bwMhz}MHz"))
                         totalBandwidthKhz += bwKhz
                     }
                 }
             }
-            
+
             if (totalBandwidthKhz > 0) {
                 val totalMhz = totalBandwidthKhz / 1000
                 bwTotalStr = "${totalMhz} MHz"
             }
-
             // Mapeamos las celdas a CellRow
             val initialRows = lteCells.map {
                 val ci = it.cellIdentity as CellIdentityLte
@@ -2299,7 +2318,7 @@ private fun getCellRows(
                     }
                 }
 
-                // Fallback 2: Parsing del toString() de la celda (HACK efectivo en algunos Samsung)
+                // Fallback 2: Parsing del toString() de la celda
                 if (rscpRawVal == Int.MAX_VALUE || rscpRawVal == -24) {
                     try {
                         val cellString = cellInfoItem.toString()
