@@ -2112,7 +2112,7 @@ private fun getCellRows(
             // Cálculo de Ancho de Banda
             var totalBandwidthKhz = 0
             if (physicalConfigList.isNotEmpty()) {
-                // Si los datos están desactivados, solo tomamos la portadora primaria (la primera)
+                // Si los datos están desactivados,solo tomamos la portadora primaria (la primera)
                 val configsToProcess = if (isDataEnabled) physicalConfigList else physicalConfigList.take(1)
 
                 configsToProcess.forEachIndexed { index, config ->
