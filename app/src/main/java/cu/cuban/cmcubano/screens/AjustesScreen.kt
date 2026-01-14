@@ -141,7 +141,7 @@ fun AjustesScreen(navController: NavController) {
                     if (!isDarkMode) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Solo disponible en modo oscuro",
+                            text = "Activa el modo oscuro para seleccionar",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f)
                         )
