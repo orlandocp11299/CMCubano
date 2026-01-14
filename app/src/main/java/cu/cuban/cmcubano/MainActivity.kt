@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.platform.LocalContext
+import android.content.SharedPreferences
 import cu.cuban.cmcubano.screens.WelcomeDialog
 import cu.cuban.cmcubano.screens.*
 import cu.cuban.cmcubano.ui.theme.CMCubanoTheme
@@ -70,15 +71,28 @@ class MainActivity : ComponentActivity() {
         requestRequiredPermissions()
         
         setContent {
-            CMCubanoTheme {
+            val context = LocalContext.current
+            val prefs = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) }
+            var amoledPref by remember { mutableStateOf(prefs.getBoolean("amoled_dark", false)) }
+
+            DisposableEffect(prefs) {
+                val listener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
+                    if (key == "amoled_dark") {
+                        amoledPref = sharedPreferences.getBoolean("amoled_dark", false)
+                    }
+                }
+                prefs.registerOnSharedPreferenceChangeListener(listener)
+                onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+            }
+
+            CMCubanoTheme(amoledDark = isSystemInDarkTheme() && amoledPref) {
                 val view = LocalView.current
                 val isDark = isSystemInDarkTheme()
-                val statusBarColor = MaterialTheme.colorScheme.primary
-                val navigationBarColor = MaterialTheme.colorScheme.primaryContainer
+                val systemBarColor = MaterialTheme.colorScheme.background
 
                 DisposableEffect(isDark) {
-                    window.statusBarColor = statusBarColor.toArgb()
-                    window.navigationBarColor = navigationBarColor.toArgb()
+                    window.statusBarColor = systemBarColor.toArgb()
+                    window.navigationBarColor = systemBarColor.toArgb()
                     
                     val windowInsetsController = WindowCompat.getInsetsController(window, view)
                     windowInsetsController?.isAppearanceLightStatusBars = !isDark

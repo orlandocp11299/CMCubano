@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import coil.compose.AsyncImage
 import androidx.navigation.NavController
+import androidx.compose.foundation.isSystemInDarkTheme
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -31,6 +32,9 @@ fun AjustesScreen(navController: NavController) {
     var showPrivacidadDialog by remember { mutableStateOf(false) }
     var showAcercaDeDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) }
+    var amoledDark by remember { mutableStateOf(prefs.getBoolean("amoled_dark", false)) }
+    val isDarkMode = isSystemInDarkTheme()
 
     Scaffold(
         topBar = {
@@ -58,9 +62,93 @@ fun AjustesScreen(navController: NavController) {
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(16.dp)
+                .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp)),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                ),
+                elevation = CardDefaults.cardElevation(
+                    defaultElevation = 4.dp
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Ajustes de la aplicación",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Tema en modo oscuro",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            RadioButton(
+                                selected = !amoledDark,
+                                onClick = if (isDarkMode) {
+                                    {
+                                        amoledDark = false
+                                        prefs.edit().putBoolean("amoled_dark", false).apply()
+                                    }
+                                } else null
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Oscuro",
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            RadioButton(
+                                selected = amoledDark,
+                                onClick = if (isDarkMode) {
+                                    {
+                                        amoledDark = true
+                                        prefs.edit().putBoolean("amoled_dark", true).apply()
+                                    }
+                                } else null
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Amoled",
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+
+                    if (!isDarkMode) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Solo disponible en modo oscuro",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f)
+                        )
+                    }
+                }
+            }
+
             // Tarjeta de Soporte
             Card(
                 onClick = { showSupportDialog = true },
@@ -75,6 +163,7 @@ fun AjustesScreen(navController: NavController) {
                 )
             ) {
                 ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = { 
                         Text(
                             "Soporte",
@@ -112,6 +201,7 @@ fun AjustesScreen(navController: NavController) {
                 )
             ) {
                 ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = { 
                         Text(
                             "Política de Privacidad",
@@ -149,6 +239,7 @@ fun AjustesScreen(navController: NavController) {
                 )
             ) {
                 ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = { 
                         Text(
                             "Acerca de",

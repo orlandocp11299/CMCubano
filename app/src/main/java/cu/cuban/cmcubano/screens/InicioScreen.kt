@@ -70,9 +70,9 @@ fun InicioScreen(navController: NavController) {
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        MaterialTheme.colorScheme.surface,
+                        MaterialTheme.colorScheme.background,
                         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f),
-                        MaterialTheme.colorScheme.surface
+                        MaterialTheme.colorScheme.background
                     )
                 )
             )
