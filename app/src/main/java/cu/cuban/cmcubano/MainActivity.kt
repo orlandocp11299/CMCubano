@@ -44,6 +44,11 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.platform.LocalContext
 import android.content.SharedPreferences
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
 import cu.cuban.cmcubano.screens.WelcomeDialog
 import cu.cuban.cmcubano.screens.*
 import cu.cuban.cmcubano.ui.theme.CMCubanoTheme
@@ -169,7 +174,31 @@ fun MainScreen() {
             startDestination = "inicio",
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(paddingValues),
+            enterTransition = {
+                slideInHorizontally(
+                    initialOffsetX = { it },
+                    animationSpec = tween(320)
+                ) + fadeIn(animationSpec = tween(320))
+            },
+            exitTransition = {
+                slideOutHorizontally(
+                    targetOffsetX = { -it / 3 },
+                    animationSpec = tween(280)
+                ) + fadeOut(animationSpec = tween(280))
+            },
+            popEnterTransition = {
+                slideInHorizontally(
+                    initialOffsetX = { -it / 3 },
+                    animationSpec = tween(320)
+                ) + fadeIn(animationSpec = tween(320))
+            },
+            popExitTransition = {
+                slideOutHorizontally(
+                    targetOffsetX = { it },
+                    animationSpec = tween(280)
+                ) + fadeOut(animationSpec = tween(280))
+            }
         ) {
             composable("inicio") { InicioScreen(navController) }
             composable("red_info") { UtilesScreen(navController, initialTab = 0, showTabs = false, standaloneTitle = "Información de Red") }
