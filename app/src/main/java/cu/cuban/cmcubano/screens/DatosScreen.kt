@@ -262,7 +262,7 @@ fun FrequencyContent() {
             title = "Bandas Específicas",
             data = listOf(
                 "B28 (LTE)" to "700 MHz",
-                "B8 (GSM/LTE)" to "900 MHz",
+                "B8 (GSM/UMTS/LTE)" to "900 MHz",
                 "B3 (LTE)" to "1800 MHz",
                 "B1 (UMTS/LTE)" to "2100 MHz"
             )

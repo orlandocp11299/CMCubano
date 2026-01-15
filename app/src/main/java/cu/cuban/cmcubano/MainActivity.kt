@@ -43,6 +43,12 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.platform.LocalContext
+import android.content.SharedPreferences
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
 import cu.cuban.cmcubano.screens.WelcomeDialog
 import cu.cuban.cmcubano.screens.*
 import cu.cuban.cmcubano.ui.theme.CMCubanoTheme
@@ -70,15 +76,28 @@ class MainActivity : ComponentActivity() {
         requestRequiredPermissions()
         
         setContent {
-            CMCubanoTheme {
+            val context = LocalContext.current
+            val prefs = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) }
+            var amoledPref by remember { mutableStateOf(prefs.getBoolean("amoled_dark", false)) }
+
+            DisposableEffect(prefs) {
+                val listener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
+                    if (key == "amoled_dark") {
+                        amoledPref = sharedPreferences.getBoolean("amoled_dark", false)
+                    }
+                }
+                prefs.registerOnSharedPreferenceChangeListener(listener)
+                onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+            }
+
+            CMCubanoTheme(amoledDark = isSystemInDarkTheme() && amoledPref) {
                 val view = LocalView.current
                 val isDark = isSystemInDarkTheme()
-                val statusBarColor = MaterialTheme.colorScheme.primary
-                val navigationBarColor = MaterialTheme.colorScheme.primaryContainer
+                val systemBarColor = MaterialTheme.colorScheme.background
 
                 DisposableEffect(isDark) {
-                    window.statusBarColor = statusBarColor.toArgb()
-                    window.navigationBarColor = navigationBarColor.toArgb()
+                    window.statusBarColor = systemBarColor.toArgb()
+                    window.navigationBarColor = systemBarColor.toArgb()
                     
                     val windowInsetsController = WindowCompat.getInsetsController(window, view)
                     windowInsetsController?.isAppearanceLightStatusBars = !isDark
@@ -155,7 +174,31 @@ fun MainScreen() {
             startDestination = "inicio",
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(paddingValues),
+            enterTransition = {
+                slideInHorizontally(
+                    initialOffsetX = { it },
+                    animationSpec = tween(320)
+                ) + fadeIn(animationSpec = tween(320))
+            },
+            exitTransition = {
+                slideOutHorizontally(
+                    targetOffsetX = { -it / 3 },
+                    animationSpec = tween(280)
+                ) + fadeOut(animationSpec = tween(280))
+            },
+            popEnterTransition = {
+                slideInHorizontally(
+                    initialOffsetX = { -it / 3 },
+                    animationSpec = tween(320)
+                ) + fadeIn(animationSpec = tween(320))
+            },
+            popExitTransition = {
+                slideOutHorizontally(
+                    targetOffsetX = { it },
+                    animationSpec = tween(280)
+                ) + fadeOut(animationSpec = tween(280))
+            }
         ) {
             composable("inicio") { InicioScreen(navController) }
             composable("red_info") { UtilesScreen(navController, initialTab = 0, showTabs = false, standaloneTitle = "Información de Red") }

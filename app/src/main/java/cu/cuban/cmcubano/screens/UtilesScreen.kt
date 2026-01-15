@@ -1427,163 +1427,177 @@ fun PlanesSection(
             .padding(16.dp)
     ) {
         // Navegación de categorías
-        if (selectedCategory == null) {
-            // El encabezado "Categorías de Planes" ha sido removido como se solicitó
+        AnimatedContent(
+            targetState = selectedCategory,
+            transitionSpec = {
+                if (targetState != null) {
+                    (slideInHorizontally(animationSpec = tween(320)) { it } + fadeIn(animationSpec = tween(320)))
+                        .togetherWith(slideOutHorizontally(animationSpec = tween(280)) { -it / 3 } + fadeOut(animationSpec = tween(280)))
+                } else {
+                    (slideInHorizontally(animationSpec = tween(320)) { -it / 3 } + fadeIn(animationSpec = tween(320)))
+                        .togetherWith(slideOutHorizontally(animationSpec = tween(280)) { it } + fadeOut(animationSpec = tween(280)))
+                }
+            },
+            label = "planes_category_transition"
+        ) { category ->
+            if (category == null) {
+                // El encabezado "Categorías de Planes" ha sido removido como se solicitó
 
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                CategoryCard(
-                    title = "Planes de Datos",
-                    icon = Icons.Default.DataUsage,
-                    color = MaterialTheme.colorScheme.primary,
-                    onClick = { onCategoryChange("Datos") }
-                )
-                CategoryCard(
-                    title = "Planes de Voz",
-                    icon = Icons.Default.Phone,
-                    color = Color(0xFF4CAF50), // Un verde para Voz
-                    onClick = { onCategoryChange("Voz") }
-                )
-                CategoryCard(
-                    title = "Planes de SMS",
-                    icon = Icons.Default.Email,
-                    color = Color(0xFFFF9800), // Naranja para SMS
-                    onClick = { onCategoryChange("SMS") }
-                )
-                CategoryCard(
-                    title = "Activar 4G",
-                    icon = Icons.Default.SettingsInputAntenna,
-                    color = Color(0xFFE91E63), // Pink/Magenta for Activation
-                    onClick = {
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
-                            val subId = selectedSubscription?.subscriptionId
-                            sendDirectSms(context, subId, "2266", "LTE")
-                        } else {
-                            smsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    CategoryCard(
+                        title = "Planes de Datos",
+                        icon = Icons.Default.DataUsage,
+                        color = MaterialTheme.colorScheme.primary,
+                        onClick = { onCategoryChange("Datos") }
+                    )
+                    CategoryCard(
+                        title = "Planes de Voz",
+                        icon = Icons.Default.Phone,
+                        color = Color(0xFF4CAF50), // Un verde para Voz
+                        onClick = { onCategoryChange("Voz") }
+                    )
+                    CategoryCard(
+                        title = "Planes de SMS",
+                        icon = Icons.Default.Email,
+                        color = Color(0xFFFF9800), // Naranja para SMS
+                        onClick = { onCategoryChange("SMS") }
+                    )
+                    CategoryCard(
+                        title = "Activar 4G",
+                        icon = Icons.Default.SettingsInputAntenna,
+                        color = Color(0xFFE91E63), // Pink/Magenta for Activation
+                        onClick = {
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
+                                val subId = selectedSubscription?.subscriptionId
+                                sendDirectSms(context, subId, "2266", "LTE")
+                            } else {
+                                smsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
+                            }
                         }
-                    }
-                )
-            }
-        } else {
-            // Vista de lista de planes
-            val activePlanes = when (selectedCategory) {
-                "Datos" -> planesDatos
-                "Voz" -> planesVoz
-                "SMS" -> planesSms
-                else -> emptyList()
-            }
+                    )
+                }
+            } else {
+                // Vista de lista de planes
+                val activePlanes = when (category) {
+                    "Datos" -> planesDatos
+                    "Voz" -> planesVoz
+                    "SMS" -> planesSms
+                    else -> emptyList()
+                }
 
-            // El sub-encabezado ha sido removido. La navegación y el título se manejan ahora desde el TopAppBar principal.
+                // El sub-encabezado ha sido removido. La navegación y el título se manejan ahora desde el TopAppBar principal.
 
-            // Lista de planes
-            Column(
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                activePlanes.forEach { plan ->
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        elevation = CardDefaults.cardElevation(
-                            defaultElevation = 2.dp,
-                            pressedElevation = 4.dp
-                        ),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surface
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { }
-                    ) {
-                        Row(
+                // Lista de planes
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    activePlanes.forEach { plan ->
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = CardDefaults.cardElevation(
+                                defaultElevation = 2.dp,
+                                pressedElevation = 4.dp
+                            ),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp), // Reduced from 16.dp
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .clickable { }
                         ) {
-                            // Icono
-                            Box(
+                            Row(
                                 modifier = Modifier
-                                    .size(40.dp)
-                                    .background(
-                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                                        shape = RoundedCornerShape(10.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
+                                    .fillMaxWidth()
+                                    .padding(12.dp), // Reduced from 16.dp
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = plan.icono,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            // Descripción
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = plan.title,
-                                    style = MaterialTheme.typography.bodyMedium, // Reduced from bodyLarge
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1
-                                )
-                                if (!plan.subtitle.isNullOrEmpty()) {
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = plan.subtitle,
-                                        style = MaterialTheme.typography.bodySmall, // Reduced from bodyMedium
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                                        maxLines = 1,
-                                        fontSize = 11.sp
+                                // Icono
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = plan.icono,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
-                            }
 
-                            Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
 
-                            // Botón de precio
-                            Button(
-                                onClick = {
-                                    if (plan.ussd.startsWith("sms:")) {
-                                        try {
-                                            val parts = plan.ussd.removePrefix("sms:").split(":")
-                                            val number = parts[0]
-                                            val body = parts.getOrElse(1) { "" }
-                                            val intent = Intent(Intent.ACTION_SENDTO).apply {
-                                                data = Uri.parse("smsto:$number")
-                                                putExtra("sms_body", body)
-                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            }
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) {
-                                            // Fallback or error handling
-                                        }
-                                    } else {
-                                        if (ContextCompat.checkSelfPermission(context, callPhonePermission) == PackageManager.PERMISSION_GRANTED) {
-                                            makeUssdCall(context, plan.ussd, selectedSubscription)
-                                        } else {
-                                            permissionLauncher.launch(callPhonePermission)
-                                        }
+                                // Descripción
+                                Column(
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = plan.title,
+                                        style = MaterialTheme.typography.bodyMedium, // Reduced from bodyLarge
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1
+                                    )
+                                    if (!plan.subtitle.isNullOrEmpty()) {
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = plan.subtitle,
+                                            style = MaterialTheme.typography.bodySmall, // Reduced from bodyMedium
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                            maxLines = 1,
+                                            fontSize = 11.sp
+                                        )
                                     }
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary
-                                ),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                                modifier = Modifier
-                                    .height(36.dp)
-                                    .widthIn(min = 70.dp)
-                            ) {
-                                Text(
-                                    text = plan.price,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1
-                                )
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                // Botón de precio
+                                Button(
+                                    onClick = {
+                                        if (plan.ussd.startsWith("sms:")) {
+                                            try {
+                                                val parts = plan.ussd.removePrefix("sms:").split(":")
+                                                val number = parts[0]
+                                                val body = parts.getOrElse(1) { "" }
+                                                val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                                    data = Uri.parse("smsto:$number")
+                                                    putExtra("sms_body", body)
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                context.startActivity(intent)
+                                            } catch (e: Exception) {
+                                                // Fallback or error handling
+                                            }
+                                        } else {
+                                            if (ContextCompat.checkSelfPermission(context, callPhonePermission) == PackageManager.PERMISSION_GRANTED) {
+                                                makeUssdCall(context, plan.ussd, selectedSubscription)
+                                            } else {
+                                                permissionLauncher.launch(callPhonePermission)
+                                            }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                                    modifier = Modifier
+                                        .height(36.dp)
+                                        .widthIn(min = 70.dp)
+                                ) {
+                                    Text(
+                                        text = plan.price,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1
+                                    )
+                                }
                             }
                         }
                     }

@@ -137,18 +137,18 @@ fun SpeedTestScreen(navController: NavController) {
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color(0xFF131A26),
-                    titleContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
         },
-        containerColor = Color(0xFF131A26)
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(Color(0xFF131A26)) // Dark Blue background from image
+                .background(MaterialTheme.colorScheme.background)
         ) {
             val screenHeight = maxHeight
             val screenWidth = maxWidth
@@ -227,8 +227,8 @@ fun SpeedTestScreen(navController: NavController) {
                     .heightIn(min = 48.dp, max = 60.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF00E5FF),
-                    contentColor = Color(0xFF131A26)
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
                 ),
                 enabled = state == TestState.IDLE || state == TestState.FINISHED
             ) {
@@ -246,11 +246,25 @@ fun SpeedTestScreen(navController: NavController) {
 @Composable
 fun ResultHeaderItem(label: String, value: String, icon: ImageVector, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = label, color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp)
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+            fontSize = 14.sp
+        )
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
             Spacer(modifier = Modifier.width(4.dp))
-            Text(text = value, color = color, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Text(
+                text = value,
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
@@ -258,9 +272,18 @@ fun ResultHeaderItem(label: String, value: String, icon: ImageVector, color: Col
 @Composable
 fun LatencyItem(icon: ImageVector, label: String, value: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(imageVector = icon, contentDescription = null, tint = Color(0xFF00E5FF).copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+            modifier = Modifier.size(16.dp)
+        )
         Spacer(modifier = Modifier.width(4.dp))
-        Text(text = "$label $value", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
+        Text(
+            text = "$label $value",
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+            fontSize = 13.sp
+        )
     }
 }
 
@@ -270,11 +293,25 @@ fun Speedometer(speed: Float, state: TestState, maxSpeed: Float, modifier: Modif
         targetValue = speed,
         animationSpec = tween(600, easing = LinearOutSlowInEasing)
     )
+
+    val trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+    val inactiveTickColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+    val activeColor = MaterialTheme.colorScheme.primary
+    val numberColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+    val centerTextColor = MaterialTheme.colorScheme.onSurface
     
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
     ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp
+        ) {}
+
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2, size.height / 2)
             val radius = size.width / 2.2f
@@ -283,7 +320,7 @@ fun Speedometer(speed: Float, state: TestState, maxSpeed: Float, modifier: Modif
             
             // Background Arc (Track)
             drawArc(
-                color = Color.White.copy(alpha = 0.1f),
+                color = trackColor,
                 startAngle = startAngle,
                 sweepAngle = sweepAngle,
                 useCenter = false,
@@ -313,7 +350,7 @@ fun Speedometer(speed: Float, state: TestState, maxSpeed: Float, modifier: Modif
                 val endY = center.y + tickEndRadius * sin(rad)
                 
                 drawLine(
-                    color = Color.White.copy(alpha = 0.4f),
+                    color = inactiveTickColor,
                     start = Offset(startX, startY),
                     end = Offset(endX, endY),
                     strokeWidth = 2f
@@ -329,7 +366,7 @@ fun Speedometer(speed: Float, state: TestState, maxSpeed: Float, modifier: Modif
                 
                 drawLine(
                     color = if (angle <= startAngle + (animatedSpeed / maxSpeed) * sweepAngle) 
-                        Color(0xFF00E5FF) else Color.White.copy(alpha = 0.1f),
+                        activeColor else inactiveTickColor,
                     start = Offset(center.x + tickStartRadius * cos(rad), center.y + tickStartRadius * sin(rad)),
                     end = Offset(center.x + tickEndRadius * cos(rad), center.y + tickEndRadius * sin(rad)),
                     strokeWidth = 2f
@@ -339,7 +376,7 @@ fun Speedometer(speed: Float, state: TestState, maxSpeed: Float, modifier: Modif
             // Progress Arc (Cyan Glow)
             val progressProgress = (animatedSpeed / maxSpeed).coerceIn(0f, 1f)
             drawArc(
-                color = Color(0xFF00E5FF),
+                color = activeColor,
                 startAngle = startAngle,
                 sweepAngle = sweepAngle * progressProgress,
                 useCenter = false,
@@ -366,7 +403,7 @@ fun Speedometer(speed: Float, state: TestState, maxSpeed: Float, modifier: Modif
                 ) {
                     Text(
                         text = i.toString(),
-                        color = Color.White.copy(alpha = 0.6f),
+                        color = numberColor,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -380,12 +417,12 @@ fun Speedometer(speed: Float, state: TestState, maxSpeed: Float, modifier: Modif
                 text = String.format("%.2f", animatedSpeed),
                 style = MaterialTheme.typography.displayMedium,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = centerTextColor
             )
             Text(
                 text = "Mbps",
                 style = MaterialTheme.typography.titleLarge,
-                color = Color.White.copy(alpha = 0.5f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )
         }
     }
