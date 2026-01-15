@@ -49,6 +49,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.tween
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import cu.cuban.cmcubano.screens.WelcomeDialog
 import cu.cuban.cmcubano.screens.*
 import cu.cuban.cmcubano.ui.theme.CMCubanoTheme
@@ -178,32 +180,51 @@ fun MainScreen() {
             enterTransition = {
                 slideInHorizontally(
                     initialOffsetX = { it },
-                    animationSpec = tween(320)
-                ) + fadeIn(animationSpec = tween(320))
+                    animationSpec = tween(200)
+                ) + fadeIn(animationSpec = tween(200))
             },
             exitTransition = {
                 slideOutHorizontally(
                     targetOffsetX = { -it / 3 },
-                    animationSpec = tween(280)
-                ) + fadeOut(animationSpec = tween(280))
+                    animationSpec = tween(180)
+                ) + fadeOut(animationSpec = tween(180))
             },
             popEnterTransition = {
                 slideInHorizontally(
                     initialOffsetX = { -it / 3 },
-                    animationSpec = tween(320)
-                ) + fadeIn(animationSpec = tween(320))
+                    animationSpec = tween(200)
+                ) + fadeIn(animationSpec = tween(200))
             },
             popExitTransition = {
                 slideOutHorizontally(
                     targetOffsetX = { it },
-                    animationSpec = tween(280)
-                ) + fadeOut(animationSpec = tween(280))
+                    animationSpec = tween(180)
+                ) + fadeOut(animationSpec = tween(180))
             }
         ) {
             composable("inicio") { InicioScreen(navController) }
             composable("red_info") { UtilesScreen(navController, initialTab = 0, showTabs = false, standaloneTitle = "Información de Red") }
             composable("planes_menu") { PlanesMenuScreen(navController) }
-            composable("planes_list") { UtilesScreen(navController, initialTab = 2, showTabs = false, standaloneTitle = "Planes") }
+            composable(
+                route = "planes_list?category={category}",
+                arguments = listOf(
+                    navArgument("category") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) { backStackEntry ->
+                val category = backStackEntry.arguments?.getString("category")
+                UtilesScreen(
+                    navController,
+                    initialTab = 2,
+                    showTabs = false,
+                    standaloneTitle = "Planes",
+                    initialPlanesCategory = category,
+                    useNavForPlanesCategory = true
+                )
+            }
             composable("consultas_list") { UtilesScreen(navController, initialTab = 3, showTabs = false, standaloneTitle = "Consultas") }
             composable("transferencia_list") { UtilesScreen(navController, initialTab = 4, showTabs = false, standaloneTitle = "Transferencia") }
             composable("utiles") { UtilesScreen(navController) }

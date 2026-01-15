@@ -291,7 +291,7 @@ fun LatencyItem(icon: ImageVector, label: String, value: String) {
 fun Speedometer(speed: Float, state: TestState, maxSpeed: Float, modifier: Modifier = Modifier) {
     val animatedSpeed by animateFloatAsState(
         targetValue = speed,
-        animationSpec = tween(600, easing = LinearOutSlowInEasing)
+        animationSpec = tween(400, easing = EaseInOut)
     )
 
     val trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)

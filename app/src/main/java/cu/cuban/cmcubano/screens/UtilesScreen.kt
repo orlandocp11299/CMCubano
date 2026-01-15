@@ -75,7 +75,9 @@ fun UtilesScreen(
     navController: NavController,
     initialTab: Int = 0,
     showTabs: Boolean = true,
-    standaloneTitle: String? = null
+    standaloneTitle: String? = null,
+    initialPlanesCategory: String? = null,
+    useNavForPlanesCategory: Boolean = false
 ) {
     val context = LocalContext.current
     var hasPermissions by remember { mutableStateOf(false) }
@@ -224,10 +226,16 @@ fun UtilesScreen(
             }
         }
     }
+
+    var selectedTab by remember { mutableStateOf(initialTab) }
+    // Estado para la categoría seleccionada en la sección de planes
+    var selectedPlanesCategory by remember(initialPlanesCategory) { mutableStateOf<String?>(initialPlanesCategory) }
+
     // Implementar Polling Activo (Estrategia Pro):
     // Refresco forzado cada 2.5 segundos para evitar datos congelados/basura
-    LaunchedEffect(hasPermissions, hasLocationPermission, selectedSimIndex, activeSubscriptions) {
-        if (!hasPermissions || !hasLocationPermission) return@LaunchedEffect
+    // SOLO activar monitoreo cuando estemos en la pestaña de Útiles (selectedTab == 0)
+    LaunchedEffect(hasPermissions, hasLocationPermission, selectedSimIndex, activeSubscriptions, selectedTab) {
+        if (!hasPermissions || !hasLocationPermission || selectedTab != 0) return@LaunchedEffect
         
         val subId = activeSubscriptions.getOrNull(selectedSimIndex)?.subscriptionId ?: return@LaunchedEffect
         val telephonyManagerBase = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
@@ -288,9 +296,9 @@ fun UtilesScreen(
         }
     }
 
-    // Implementar actualización en tiempo real solo si hay permisos de ubicación
-    LaunchedEffect(hasPermissions, hasLocationPermission, selectedSimIndex, activeSubscriptions) {
-        if (!hasPermissions || !hasLocationPermission) return@LaunchedEffect
+    // Implementar actualización en tiempo real solo si hay permisos de ubicación Y estamos en pestaña Útiles
+    LaunchedEffect(hasPermissions, hasLocationPermission, selectedSimIndex, activeSubscriptions, selectedTab) {
+        if (!hasPermissions || !hasLocationPermission || selectedTab != 0) return@LaunchedEffect
 
         val subId = activeSubscriptions.getOrNull(selectedSimIndex)?.subscriptionId ?: return@LaunchedEffect
         val telephonyManagerBase = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
@@ -409,10 +417,6 @@ fun UtilesScreen(
 
     }
 
-    var selectedTab by remember { mutableStateOf(initialTab) }
-    // Estado para la categoría seleccionada en la sección de planes
-    var selectedPlanesCategory by remember { mutableStateOf<String?>(null) }
-
     val tabs = listOf(
         Triple("Útiles", Icons.Default.Build, "Útiles"),
         Triple("Velocidad", Icons.Default.Speed, "Velocidad"),
@@ -512,10 +516,7 @@ fun UtilesScreen(
                                 RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
                             )
                             .animateContentSize(
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessLow
-                                )
+                                animationSpec = tween(200, easing = EaseInOut)
                             )
                     )
                 }
@@ -559,7 +560,11 @@ fun UtilesScreen(
                 navigationIcon = {
                     IconButton(onClick = {
                         if (selectedTab == 2 && selectedPlanesCategory != null) {
-                            selectedPlanesCategory = null
+                            if (useNavForPlanesCategory) {
+                                navController.popBackStack()
+                            } else {
+                                selectedPlanesCategory = null
+                            }
                         } else {
                             navController.popBackStack()
                         }
@@ -626,21 +631,21 @@ fun UtilesScreen(
                 if (targetState > initialState) {
                     slideInHorizontally(
                         initialOffsetX = { it },
-                        animationSpec = tween(300, easing = FastOutSlowInEasing)
-                    ) + fadeIn(animationSpec = tween(300)) togetherWith
+                        animationSpec = tween(200, easing = EaseInOut)
+                    ) + fadeIn(animationSpec = tween(200)) togetherWith
                             slideOutHorizontally(
                                 targetOffsetX = { -it },
-                                animationSpec = tween(300, easing = FastOutSlowInEasing)
-                            ) + fadeOut(animationSpec = tween(300))
+                                animationSpec = tween(200, easing = EaseInOut)
+                            ) + fadeOut(animationSpec = tween(200))
                 } else {
                     slideInHorizontally(
                         initialOffsetX = { -it },
-                        animationSpec = tween(300, easing = FastOutSlowInEasing)
-                    ) + fadeIn(animationSpec = tween(300)) togetherWith
+                        animationSpec = tween(200, easing = EaseInOut)
+                    ) + fadeIn(animationSpec = tween(200)) togetherWith
                             slideOutHorizontally(
                                 targetOffsetX = { it },
-                                animationSpec = tween(300, easing = FastOutSlowInEasing)
-                            ) + fadeOut(animationSpec = tween(300))
+                                animationSpec = tween(200, easing = EaseInOut)
+                            ) + fadeOut(animationSpec = tween(200))
                 }
             }
         ) { tabIndex ->
@@ -744,8 +749,8 @@ fun UtilesScreen(
                             // Mostrar panel principal y tabla de celdas vecinas con animaciones
                             AnimatedVisibility(
                                 visible = cellRowsState != null,
-                                enter = fadeIn(animationSpec = tween(300)) + expandVertically(animationSpec = tween(300)),
-                                exit = fadeOut(animationSpec = tween(200)) + shrinkVertically(animationSpec = tween(200))
+                                enter = fadeIn(animationSpec = tween(200)) + expandVertically(animationSpec = tween(200)),
+                                exit = fadeOut(animationSpec = tween(150)) + shrinkVertically(animationSpec = tween(150))
                             ) {
                                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                     cellRowsState?.let { data ->
@@ -758,8 +763,8 @@ fun UtilesScreen(
                             // Mostrar indicador de carga mientras se procesan los datos
                             AnimatedVisibility(
                                 visible = isProcessingCells,
-                                enter = fadeIn(animationSpec = tween(200)),
-                                exit = fadeOut(animationSpec = tween(200))
+                                enter = fadeIn(animationSpec = tween(150)),
+                                exit = fadeOut(animationSpec = tween(150))
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -778,7 +783,7 @@ fun UtilesScreen(
                             if (cellRowsState == null && !isProcessingCells && cellInfoList.isEmpty()) {
                                 AnimatedVisibility(
                                     visible = true,
-                                    enter = fadeIn(animationSpec = tween(300))
+                                    enter = fadeIn(animationSpec = tween(200))
                                 ) {
                                     Box(
                                         modifier = Modifier
@@ -811,7 +816,18 @@ fun UtilesScreen(
                             context,
                             activeSubscriptions.getOrNull(selectedSimIndex),
                             selectedPlanesCategory,
-                            onCategoryChange = { selectedPlanesCategory = it }
+                            useNavForCategory = useNavForPlanesCategory,
+                            onCategoryChange = { category ->
+                                if (useNavForPlanesCategory) {
+                                    if (category == null) {
+                                        navController.popBackStack()
+                                    } else {
+                                        navController.navigate("planes_list?category=$category")
+                                    }
+                                } else {
+                                    selectedPlanesCategory = category
+                                }
+                            }
                         )
                     }
                 }
@@ -1374,6 +1390,7 @@ fun PlanesSection(
     context: Context,
     selectedSubscription: SubscriptionInfo?,
     selectedCategory: String?,
+    useNavForCategory: Boolean = false,
     onCategoryChange: (String?) -> Unit
 ) {
     val callPhonePermission = Manifest.permission.CALL_PHONE
@@ -1416,9 +1433,11 @@ fun PlanesSection(
         }
     }
 
-    // Manejo del botón atrás de Android
-    BackHandler(enabled = selectedCategory != null) {
-        onCategoryChange(null)
+    if (!useNavForCategory) {
+        // Manejo del botón atrás de Android
+        BackHandler(enabled = selectedCategory != null) {
+            onCategoryChange(null)
+        }
     }
 
     Column(
@@ -1427,19 +1446,7 @@ fun PlanesSection(
             .padding(16.dp)
     ) {
         // Navegación de categorías
-        AnimatedContent(
-            targetState = selectedCategory,
-            transitionSpec = {
-                if (targetState != null) {
-                    (slideInHorizontally(animationSpec = tween(320)) { it } + fadeIn(animationSpec = tween(320)))
-                        .togetherWith(slideOutHorizontally(animationSpec = tween(280)) { -it / 3 } + fadeOut(animationSpec = tween(280)))
-                } else {
-                    (slideInHorizontally(animationSpec = tween(320)) { -it / 3 } + fadeIn(animationSpec = tween(320)))
-                        .togetherWith(slideOutHorizontally(animationSpec = tween(280)) { it } + fadeOut(animationSpec = tween(280)))
-                }
-            },
-            label = "planes_category_transition"
-        ) { category ->
+        val content: @Composable (String?) -> Unit = { category ->
             if (category == null) {
                 // El encabezado "Categorías de Planes" ha sido removido como se solicitó
 
@@ -1604,6 +1611,26 @@ fun PlanesSection(
                 }
             }
         }
+
+        if (useNavForCategory) {
+            content(selectedCategory)
+        } else {
+            AnimatedContent(
+                targetState = selectedCategory,
+                transitionSpec = {
+                    if (targetState != null) {
+                        (slideInHorizontally(animationSpec = tween(200)) { it } + fadeIn(animationSpec = tween(200)))
+                            .togetherWith(slideOutHorizontally(animationSpec = tween(180)) { -it / 3 } + fadeOut(animationSpec = tween(180)))
+                    } else {
+                        (slideInHorizontally(animationSpec = tween(200)) { -it / 3 } + fadeIn(animationSpec = tween(200)))
+                            .togetherWith(slideOutHorizontally(animationSpec = tween(180)) { it } + fadeOut(animationSpec = tween(180)))
+                    }
+                },
+                label = "planes_category_transition"
+            ) { category ->
+                content(category)
+            }
+        }
     }
 }
 
@@ -1618,17 +1645,14 @@ fun CategoryCard(
     val isPressed by interactionSource.collectIsPressedAsState()
 
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
+        targetValue = if (isPressed) 0.98f else 1f,
+        animationSpec = tween(120, easing = EaseInOut),
         label = "scale"
     )
 
     val elevation by animateDpAsState(
         targetValue = if (isPressed) 1.dp else 2.dp,
-        animationSpec = tween(100),
+        animationSpec = tween(80),
         label = "elevation"
     )
 
