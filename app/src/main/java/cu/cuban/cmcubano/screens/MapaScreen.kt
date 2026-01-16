@@ -3,21 +3,50 @@ package cu.cuban.cmcubano.screens
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebSettings
+import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
 import cu.cuban.cmcubano.utils.AdBlockWebViewClient
+import cu.cuban.cmcubano.utils.WebViewCacheManager
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapaScreen(navController: NavController) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    
+    // Usar el WebView cacheado para mejor rendimiento
+    val cachedWebView = remember { WebViewCacheManager.getOrCreateWebView(context) }
+    
+    // Manejar el ciclo de vida del WebView
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> cachedWebView.onResume()
+                Lifecycle.Event.ON_PAUSE -> cachedWebView.onPause()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -32,6 +61,20 @@ fun MapaScreen(navController: NavController) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
                     }
                 },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            // Recargar la página web
+                            cachedWebView.reload()
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Actualizar mapa",
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
@@ -40,42 +83,15 @@ fun MapaScreen(navController: NavController) {
         }
     ) { paddingValues ->
         AndroidView(
-            factory = { context ->
-                WebView(context).apply {
-                    webViewClient = AdBlockWebViewClient()
-                    settings.apply {
-                        javaScriptEnabled = true
-                        domStorageEnabled = true
-                        loadWithOverviewMode = true
-                        useWideViewPort = true
-                        builtInZoomControls = true
-                        displayZoomControls = false
-                        setSupportZoom(true)
-                        setGeolocationEnabled(true)
-                        mediaPlaybackRequiresUserGesture = false
-                        cacheMode = WebSettings.LOAD_NO_CACHE
-                        userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                        // Configuraciones adicionales para forzar modo escritorio
-                        loadWithOverviewMode = false
-                        useWideViewPort = true
-                        textZoom = 100
-                    }
-                    // Eliminar barra de scroll
-                    isVerticalScrollBarEnabled = false
-                    isHorizontalScrollBarEnabled = false
-                    // Configurar el layout para llenar todo el espacio
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                }
-            },
+            factory = { cachedWebView },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues),
             update = { webView ->
-                // Cargar la URL con parámetros específicos para Cuba
-                webView.loadUrl("https://www.cellmapper.net/map?MCC=368&MNC=1&type=LTE&latitude=23.113592&longitude=-82.366592&zoom=7&showTowers=true&showCoverage=true&clusterEnabled=true&tilesEnabled=true&showOrphans=false&showNoFrequencyOnly=false&showFrequencyOnly=false&showBandwidthOnly=false&DateFilterType=Last&showHex=false&showVerifiedOnly=false&showUnverifiedOnly=false&showLTECAOnly=false&showENDCOnly=false&showBand=0&showSectorColours=true")
+                // Solo cargar la URL si no está cargada o es diferente
+                if (webView.url == null || !webView.url!!.contains("cellmapper.net")) {
+                    webView.loadUrl("https://www.cellmapper.net/map?MCC=368&MNC=1&type=LTE&latitude=23.113592&longitude=-82.366592&zoom=7&showTowers=true&showCoverage=true&clusterEnabled=true&tilesEnabled=true&showOrphans=false&showNoFrequencyOnly=false&showFrequencyOnly=false&showBandwidthOnly=false&DateFilterType=Last&showHex=false&showVerifiedOnly=false&showUnverifiedOnly=false&showLTECAOnly=false&showENDCOnly=false&showBand=0&showSectorColours=true")
+                }
             }
         )
     }

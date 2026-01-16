@@ -185,14 +185,6 @@ fun InicioScreen(navController: NavController) {
         }
 
         Spacer(modifier = Modifier.height(40.dp))
-        
-        Surface(
-            modifier = Modifier
-                .padding(horizontal = 32.dp)
-                .fillMaxWidth()
-                .height(1.dp),
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-        ) {}
     }
 }
 
