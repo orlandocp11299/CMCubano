@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.ContactsContract
+import android.provider.Settings
 import android.telecom.TelecomManager
 import android.telephony.*
 import android.widget.Toast
@@ -82,8 +83,31 @@ fun UtilesScreen(
     val context = LocalContext.current
     var hasPermissions by remember { mutableStateOf(false) }
     var hasLocationPermission by remember { mutableStateOf(false) }
+    var isAirplaneModeOn by remember { mutableStateOf(false) }
+    var isLocationServiceEnabled by remember { mutableStateOf(false) }
+    var isCheckingPermissions by remember { mutableStateOf(true) } // Estado inicial: verificando permisos
     val updateTrigger = remember { mutableStateOf(0) }
     var selectedSimIndex by remember { mutableIntStateOf(0) }
+
+    // Verificar estado del modo avión y servicios de ubicación
+    LaunchedEffect(Unit) {
+        while (true) {
+            isAirplaneModeOn = Settings.Global.getInt(
+                context.contentResolver,
+                Settings.Global.AIRPLANE_MODE_ON,
+                0
+            ) != 0
+            
+            val locationMode = Settings.Secure.getInt(
+                context.contentResolver,
+                Settings.Secure.LOCATION_MODE,
+                Settings.Secure.LOCATION_MODE_OFF
+            )
+            isLocationServiceEnabled = locationMode != Settings.Secure.LOCATION_MODE_OFF
+            
+            delay(1000) // Verificar cada segundo
+        }
+    }
 
     val subscriptionManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
     val activeSubscriptions = remember(updateTrigger.value, hasPermissions) {
@@ -105,6 +129,9 @@ fun UtilesScreen(
         hasPermissions = permissions.all { it.value }
         hasLocationPermission = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
                 permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        
+        // Finalizar verificación de permisos después de la respuesta
+        isCheckingPermissions = false
 
         // Debug: imprimir estado de permisos después de la respuesta
         println("DEBUG AFTER PERMISSION: hasPermissions = $hasPermissions")
@@ -126,6 +153,9 @@ fun UtilesScreen(
             ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
         }
 
+        // Dar tiempo para la verificación inicial
+        delay(1500) // Esperar 1.5 segundos antes de verificar
+        
         if (missingPermissions.isNotEmpty()) {
             permissionLauncher.launch(missingPermissions.toTypedArray())
         } else {
@@ -133,6 +163,9 @@ fun UtilesScreen(
             hasLocationPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
                     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         }
+        
+        // Finalizar verificación de permisos
+        isCheckingPermissions = false
 
         // Debug: imprimir estado de permisos
         println("DEBUG: hasPermissions = $hasPermissions")
@@ -182,6 +215,13 @@ fun UtilesScreen(
     var telephonyDisplayInfo by remember { mutableStateOf<TelephonyDisplayInfo?>(null) }
     var physicalChannelConfigList by remember { mutableStateOf<List<PhysicalChannelConfig>>(emptyList()) }
     var isProcessingCells by remember { mutableStateOf(false) }
+    var showInitialLoading by remember { mutableStateOf(true) }
+
+    // Ocultar carga inicial después de un tiempo
+    LaunchedEffect(Unit) {
+        delay(3000) // Mostrar carga inicial por 3 segundos máximo
+        showInitialLoading = false
+    }
 
     // Reset de estados al cambiar de SIM para evitar parpadeos (Flash de datos viejos de SIM anterior)
     LaunchedEffect(selectedSimIndex, activeSubscriptions) {
@@ -659,38 +699,28 @@ fun UtilesScreen(
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        if (!hasPermissions) {
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.errorContainer,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
-                                tonalElevation = 4.dp,
-                                modifier = Modifier.fillMaxWidth()
+                        if (isCheckingPermissions) {
+                            // Mostrar animación de carga mientras se verifican los permisos
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Warning,
-                                        contentDescription = "Advertencia",
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(48.dp)
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(48.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        strokeWidth = 4.dp
                                     )
-                                    Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "Se requieren permisos",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onErrorContainer
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = "Por favor, concede los permisos necesarios para acceder a la información de red",
+                                        text = "Verificando permisos...",
                                         style = MaterialTheme.typography.bodyMedium,
-                                        textAlign = TextAlign.Center,
-                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                        textAlign = TextAlign.Center
                                     )
                                 }
                             }
@@ -717,7 +747,55 @@ fun UtilesScreen(
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "Ubicación requerida",
+                                        text = "Active la ubicación",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Para ver los parámetros de red es necesario activar la ubicación",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.Center,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Button(
+                                        onClick = {
+                                            val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                                            context.startActivity(intent)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.error
+                                        )
+                                    ) {
+                                        Text("Activar ubicación")
+                                    }
+                                }
+                            }
+                        } else if (!isLocationServiceEnabled) {
+                            // Mostrar mensaje cuando la ubicación esté desactivada
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                                tonalElevation = 4.dp,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.LocationOff,
+                                        contentDescription = "Ubicación desactivada",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Active la Ubicación",
                                         style = MaterialTheme.typography.titleMedium,
                                         color = MaterialTheme.colorScheme.onErrorContainer
                                     )
@@ -731,17 +809,62 @@ fun UtilesScreen(
                                     Spacer(modifier = Modifier.height(12.dp))
                                     Button(
                                         onClick = {
-                                            val requiredPermissions = arrayOf(
-                                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                                Manifest.permission.ACCESS_COARSE_LOCATION
-                                            )
-                                            permissionLauncher.launch(requiredPermissions)
+                                            val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                                            context.startActivity(intent)
                                         },
                                         colors = ButtonDefaults.buttonColors(
                                             containerColor = MaterialTheme.colorScheme.error
                                         )
                                     ) {
                                         Text("Activar Ubicación")
+                                    }
+                                }
+                            }
+                        } else if (isAirplaneModeOn) {
+                            // Mostrar mensaje cuando el modo avión está activado
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                                tonalElevation = 4.dp,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AirplanemodeActive,
+                                        contentDescription = "Modo avión activado",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Desactive el Modo Avión",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "El modo avión está activado y bloquea el acceso a la información de red",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.Center,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Button(
+                                        onClick = {
+                                            val intent = Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS)
+                                            context.startActivity(intent)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.error
+                                        )
+                                    ) {
+                                        Text("Configurar Modo Avión")
                                     }
                                 }
                             }
@@ -762,7 +885,7 @@ fun UtilesScreen(
 
                             // Mostrar indicador de carga mientras se procesan los datos
                             AnimatedVisibility(
-                                visible = isProcessingCells,
+                                visible = isProcessingCells || (showInitialLoading && hasPermissions && hasLocationPermission && !isAirplaneModeOn && isLocationServiceEnabled),
                                 enter = fadeIn(animationSpec = tween(150)),
                                 exit = fadeOut(animationSpec = tween(150))
                             ) {
@@ -772,15 +895,28 @@ fun UtilesScreen(
                                         .padding(32.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(40.dp),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(48.dp),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            strokeWidth = 4.dp
+                                        )
+                                        Text(
+                                            text = if (showInitialLoading) "Cargando información de red..." else "Procesando datos...",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
                                 }
                             }
 
-                            // Mensaje cuando no hay datos
-                            if (cellRowsState == null && !isProcessingCells && cellInfoList.isEmpty()) {
+                            // Mensaje cuando no hay datos y no está cargando
+                            if (!isCheckingPermissions && cellRowsState == null && !isProcessingCells && cellInfoList.isEmpty() && 
+                                hasPermissions && hasLocationPermission && !isAirplaneModeOn && isLocationServiceEnabled) {
                                 AnimatedVisibility(
                                     visible = true,
                                     enter = fadeIn(animationSpec = tween(200))
