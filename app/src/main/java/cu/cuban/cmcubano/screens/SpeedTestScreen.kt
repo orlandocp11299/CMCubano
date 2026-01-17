@@ -56,6 +56,7 @@ fun SpeedTestScreen(navController: NavController) {
     var downloadSpeed by remember { mutableStateOf(0f) }
     var uploadSpeed by remember { mutableStateOf(0f) }
     var currentSpeed by remember { mutableStateOf(0f) }
+    var showConnectionWarning by remember { mutableStateOf(false) }
     
     val scope = rememberCoroutineScope()
 
@@ -64,8 +65,7 @@ fun SpeedTestScreen(navController: NavController) {
             scope.launch {
                 val connected = isOnline()
                 if (!connected) {
-                    ping = "Error"
-                    jitter = "Error"
+                    showConnectionWarning = true
                     return@launch
                 }
 
@@ -239,6 +239,38 @@ fun SpeedTestScreen(navController: NavController) {
                 )
             }
         }
+    }
+    
+    // Diálogo de advertencia de conexión
+    if (showConnectionWarning) {
+        AlertDialog(
+            onDismissRequest = { showConnectionWarning = false },
+            title = { 
+                Text(
+                    "Sin conexión a internet",
+                    fontWeight = FontWeight.Bold
+                ) 
+            },
+            text = { 
+                Text(
+                    "No se detecta conexión a una red. Por favor, verifica tu conexión a internet e intenta nuevamente."
+                ) 
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { showConnectionWarning = false }
+                ) {
+                    Text("OK")
+                }
+            },
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = "Advertencia",
+                    tint = Color(0xFFFF9800)
+                )
+            }
+        )
     }
 }
 }

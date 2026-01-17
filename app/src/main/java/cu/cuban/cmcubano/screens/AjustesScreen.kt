@@ -12,18 +12,41 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
+
+import androidx.compose.ui.graphics.vector.ImageVector
+
+
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.painterResource
+import cu.cuban.cmcubano.R
 import coil.compose.AsyncImage
+
 import androidx.navigation.NavController
 import androidx.compose.foundation.isSystemInDarkTheme
+import android.provider.Settings
+import cu.cuban.cmcubano.utils.PremiumManager
+import android.content.Context
+import android.content.ClipboardManager
+import android.content.Context.CLIPBOARD_SERVICE
+import android.widget.Toast
+
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -31,6 +54,8 @@ fun AjustesScreen(navController: NavController) {
     var showSupportDialog by remember { mutableStateOf(false) }
     var showPrivacidadDialog by remember { mutableStateOf(false) }
     var showAcercaDeDialog by remember { mutableStateOf(false) }
+    var showDonacionesDialog by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) }
     var amoledDark by remember { mutableStateOf(prefs.getBoolean("amoled_dark", false)) }
@@ -66,212 +91,370 @@ fun AjustesScreen(navController: NavController) {
                 .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Sección Premium
+            val isPremium = remember { mutableStateOf(PremiumManager.isPremium(context)) }
+            var premiumCode by remember { mutableStateOf(if (isPremium.value) prefs.getString("premium_code", "") ?: "" else "") }
+            var errorMessage by remember { mutableStateOf("") }
+            val deviceReference = remember { PremiumManager.getDeviceReference(context) }
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .then(
+                        if (isPremium.value) {
+                            Modifier.border(
+                                width = 1.6.dp,
+                                brush = Brush.linearGradient(
+                                    colors = listOf(Color(0xFFFFA000), Color(0xFFFFD700))
+                                ),
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                        } else Modifier
+                    )
                     .clip(RoundedCornerShape(16.dp)),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer
                 ),
-                elevation = CardDefaults.cardElevation(
-                    defaultElevation = 4.dp
-                )
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Ajustes de la aplicación",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Tema en modo oscuro",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
 
+
+
+                Column(modifier = Modifier.padding(12.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.Center
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            RadioButton(
-                                selected = !amoledDark,
-                                onClick = if (isDarkMode) {
-                                    {
-                                        amoledDark = false
-                                        prefs.edit().putBoolean("amoled_dark", false).apply()
-                                    }
-                                } else null
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Oscuro",
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            RadioButton(
-                                selected = amoledDark,
-                                onClick = if (isDarkMode) {
-                                    {
-                                        amoledDark = true
-                                        prefs.edit().putBoolean("amoled_dark", true).apply()
-                                    }
-                                } else null
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Amoled",
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                        Icon(
+                            imageVector = if (isPremium.value) Icons.Default.Star else Icons.Default.WorkspacePremium,
+                            contentDescription = null,
+                            tint = if (isPremium.value) Color(0xFFFFA000) else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isPremium.value) "Premium Activo" else "Activar Premium",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isPremium.value) Color(0xFFFFA000) else MaterialTheme.colorScheme.onSecondaryContainer,
+                            fontSize = 16.sp
+                        )
+                        if (isPremium.value) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = null,
+                                tint = Color(0xFFFFA000),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
 
-                    if (!isDarkMode) {
+                    
+                    if (!isPremium.value) {
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = premiumCode,
+                            onValueChange = { premiumCode = it.filter { char -> char.isDigit() } },
+                            label = { Text("Código de activación", fontSize = 12.sp) },
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            isError = errorMessage.isNotEmpty(),
+                            textStyle = MaterialTheme.typography.bodyMedium
+                        )
+
+                        if (errorMessage.isNotEmpty()) {
+                            Text(
+                                text = errorMessage,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(
+                                    text = "REF: $deviceReference",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                            }
+                            Button(
+                                onClick = {
+                                    val message = "Solicito la activación premium de CM Cubano ($deviceReference)"
+                                    val url = "https://wa.me/5350576622?text=${Uri.encode(message)}"
+                                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                                        data = Uri.parse(url)
+                                    }
+                                    context.startActivity(intent)
+                                },
+                                modifier = Modifier.height(40.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF25D366) 
+                                )
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_whatsapp),
+                                        contentDescription = "WhatsApp",
+                                        modifier = Modifier.size(24.dp),
+                                        tint = Color.Unspecified
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Obtener", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+
+
+                        }
+
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Button(
+                            onClick = {
+                                if (PremiumManager.validateAndActivate(context, premiumCode)) {
+                                    isPremium.value = true
+                                    errorMessage = ""
+                                    // Activar el recordatorio automáticamente al activar premium
+                                    context.getSharedPreferences("recordatorio_prefs", Context.MODE_PRIVATE)
+                                        .edit()
+                                        .putBoolean("recordatorio_enabled", true)
+                                        .apply()
+                                } else {
+                                    errorMessage = "Código incorrecto"
+                                }
+
+                            },
+                            modifier = Modifier.fillMaxWidth().height(40.dp),
+                            contentPadding = PaddingValues(0.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            Text("Comprobar", fontSize = 14.sp)
+                        }
+                    } else {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Activa el modo oscuro para seleccionar",
+                            text = "Gracias por apoyar el desarrollo de CellMapper Cubano. Todas las funciones premium están desbloqueadas.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f)
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
                 }
             }
 
-            // Tarjeta de Soporte
             Card(
-                onClick = { showSupportDialog = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp)),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                ),
-                elevation = CardDefaults.cardElevation(
-                    defaultElevation = 4.dp
-                )
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
             ) {
-                ListItem(
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    headlineContent = { 
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.04f)
+                                )
+                            )
+                        )
+                        .padding(16.dp)
+                ) {
+                    Column {
                         Text(
-                            "Soporte",
+                            text = "Ajustes de la aplicación",
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center
                         )
-                    },
-                    leadingContent = {
-                        Icon(
-                            imageVector = Icons.Default.Help,
-                            contentDescription = "Soporte",
-                            tint = MaterialTheme.colorScheme.primary
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+
+                        // Selector tipo píldora con relieve animado
+                        val pillOffset by animateFloatAsState(
+                            targetValue = if (amoledDark) 1f else 0f,
+                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                            label = "pillOffset"
                         )
-                    },
-                    supportingContent = {
-                        Text(
-                            "Obtén ayuda y soporte técnico",
-                            style = MaterialTheme.typography.bodyMedium
+                        
+                        val darkTextColor by animateColorAsState(
+                            targetValue = if (!amoledDark) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
+                            label = "darkText"
                         )
+                        val amoledTextColor by animateColorAsState(
+                            targetValue = if (amoledDark) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
+                            label = "amoledText"
+                        )
+
+                        BoxWithConstraints(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.08f),
+                                    RoundedCornerShape(24.dp)
+                                )
+                                .border(
+                                    1.dp, 
+                                    MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.1f), 
+                                    RoundedCornerShape(24.dp)
+                                )
+                                .padding(4.dp)
+                        ) {
+                            val pillWidth = maxWidth / 2
+                            
+                            // Indicador deslizante
+                            Box(
+                                modifier = Modifier
+                                    .width(pillWidth)
+                                    .fillMaxHeight()
+                                    .offset(x = pillWidth * pillOffset)
+                                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp))
+                            )
+
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                // Opción OSCURO
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .clickable(enabled = isDarkMode) {
+                                            amoledDark = false
+                                            prefs.edit().putBoolean("amoled_dark", false).apply()
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "OSCURO",
+                                        fontWeight = if (!amoledDark) FontWeight.Bold else FontWeight.Normal,
+                                        color = darkTextColor
+                                    )
+                                }
+                                
+                                // Opción AMOLED
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .clickable(enabled = isDarkMode) {
+                                            amoledDark = true
+                                            prefs.edit().putBoolean("amoled_dark", true).apply()
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "AMOLED",
+                                        fontWeight = if (amoledDark) FontWeight.Bold else FontWeight.Normal,
+                                        color = amoledTextColor
+                                    )
+                                }
+                            }
+                        }
+
+
+                        if (!isDarkMode) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Activa el modo oscuro para personalizar",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
-                )
+                }
             }
 
-            // Tarjeta de Política de Privacidad
-            Card(
-                onClick = { showPrivacidadDialog = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp)),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                ),
-                elevation = CardDefaults.cardElevation(
-                    defaultElevation = 4.dp
-                )
+
+
+            // Apartados de Soporte, Privacidad y Acerca de (Modo tarjetas pequeñas tipo Inicio)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                ListItem(
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    headlineContent = { 
-                        Text(
-                            "Política de Privacidad",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            imageVector = Icons.Default.Security,
-                            contentDescription = "Privacidad",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            "Información sobre el manejo de datos",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Soporte
+                    AjustesSmallCard(
+                        icon = Icons.Default.Help,
+                        text = "Soporte",
+                        color = MaterialTheme.colorScheme.primary,
+                        onClick = { showSupportDialog = true },
+                        modifier = Modifier.weight(1f)
+                    )
+                    // Privacidad
+                    AjustesSmallCard(
+                        icon = Icons.Default.Security,
+                        text = "Privacidad",
+                        color = Color(0xFF4CAF50),
+                        onClick = { showPrivacidadDialog = true },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Acerca de
+                    AjustesSmallCard(
+                        icon = Icons.Default.Info,
+                        text = "Acerca de",
+                        color = Color(0xFF607D8B),
+                        onClick = { showAcercaDeDialog = true },
+                        modifier = Modifier.weight(1f)
+                    )
+                    // Donaciones
+                    AjustesSmallCard(
+                        icon = Icons.Default.Favorite,
+                        text = "Donar",
+                        color = Color(0xFFE91E63),
+                        onClick = { showDonacionesDialog = true },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
 
-            // Tarjeta de Acerca de
-            Card(
-                onClick = { showAcercaDeDialog = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp)),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                ),
-                elevation = CardDefaults.cardElevation(
-                    defaultElevation = 4.dp
-                )
-            ) {
-                ListItem(
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    headlineContent = { 
-                        Text(
-                            "Acerca de",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = "Acerca de",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            "Información de la aplicación y desarrollador",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                )
-            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+
+            Spacer(modifier = Modifier.height(2.dp))
 
             // Sección de redes sociales
             Text(
                 text = "Síguenos en redes sociales",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(bottom = 12.dp)
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 4.dp)
             )
+
 
             // Botones de redes sociales
             Row(
@@ -358,7 +541,73 @@ fun AjustesScreen(navController: NavController) {
             AlertDialog(
                 onDismissRequest = { showSupportDialog = false },
                 title = { Text("Soporte") },
-                text = { Text("Si necesitas ayuda, puedes contactarnos a través de nuestras redes sociales las cuales estan disponibles en la parte inferiror") },
+                text = { 
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Si necesitas ayuda con la aplicación Contacte con su desarrollador por la siguientes vias:")
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Botón de WhatsApp
+                            Button(
+                                onClick = {
+                                    val url = "https://wa.me/5350576622"
+                                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                                        data = Uri.parse(url)
+                                    }
+                                    context.startActivity(intent)
+                                },
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF25D366) 
+                                )
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_whatsapp),
+                                        contentDescription = "WhatsApp",
+                                        modifier = Modifier.size(20.dp),
+                                        tint = Color.Unspecified
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("WhatsApp", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                            
+                            // Botón de Telegram
+                            Button(
+                                onClick = {
+                                    try {
+                                        val telegramIntent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=CMCubano_dev"))
+                                        context.startActivity(telegramIntent)
+                                    } catch (e: Exception) {
+                                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/CMCubano_dev"))
+                                        context.startActivity(webIntent)
+                                    }
+                                },
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF0088CC) 
+                                )
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    AsyncImage(
+                                        model = "https://telegram.org/img/t_logo.png",
+                                        contentDescription = "Telegram",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Telegram", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                },
                 confirmButton = {
                     TextButton(onClick = { showSupportDialog = false }) {
                         Text("Aceptar")
@@ -371,7 +620,7 @@ fun AjustesScreen(navController: NavController) {
             AlertDialog(
                 onDismissRequest = { showPrivacidadDialog = false },
                 title = { Text("Política de Privacidad") },
-                text = { Text("Esta aplicación no recopila datos personales. Solo se utiliza para mostrar información sobre las redes móviles.") },
+                text = { Text("Esta aplicación no recopila informacion de ningun tipo, los permisos que se solicitan estan estrictamente pensados para el correcto funcionamiento de la aplicación.") },
                 confirmButton = {
                     TextButton(onClick = { showPrivacidadDialog = false }) {
                         Text("Aceptar")
@@ -385,7 +634,7 @@ fun AjustesScreen(navController: NavController) {
                 onDismissRequest = { showAcercaDeDialog = false },
                 title = { Text("Acerca de") },
                 text = { 
-                    Text("Versión: 1.6 Beta\nDesarrollador: Orlan_2\n\nCellMapper Cubano es una aplicación diseñada para la comunidad cubana interesada en el mapeo de redes móviles.")
+                    Text("Versión: 1.8 Beta\nDesarrollador: Orlando\n\nCellMapper Cubano es una aplicación diseñada para la comunidad cubana interesada en el mapeo de redes móviles.")
                 },
                 confirmButton = {
                     TextButton(onClick = { showAcercaDeDialog = false }) {
@@ -393,6 +642,133 @@ fun AjustesScreen(navController: NavController) {
                     }
                 }
             )
+        }
+
+        if (showDonacionesDialog) {
+            AlertDialog(
+                onDismissRequest = { showDonacionesDialog = false },
+                title = { 
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Favorite, contentDescription = null, tint = Color(0xFFE91E63))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Apoyar Proyecto")
+                    }
+                },
+                text = { 
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Si valoras este trabajo, puedes ayudar a mantener el proyecto vivo mediante una pequeña donación, ya sea saldo móvil o transferencia bancaria.")
+                        
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Toca para copiar:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            
+                            // Campo para Teléfono
+                            CopyableDonationField(
+                                label = "Teléfono",
+                                value = "50576622",
+                                context = context
+                            )
+                            
+                            // Campo para Tarjeta
+                            CopyableDonationField(
+                                label = "Tarjeta",
+                                value = "9205129972760673",
+                                context = context
+                            )
+                        }
+                        
+                        Text("Cualquier aporte, por pequeño que sea, motiva a seguir mejorando la app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showDonacionesDialog = false }) {
+                        Text("Cerrar")
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun CopyableDonationField(label: String, value: String, context: Context) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            .clickable {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val clip = android.content.ClipData.newPlainText("Donación $label", value)
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(context, "$label copiado al portapapeles", Toast.LENGTH_SHORT).show()
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = value, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+        }
+        Icon(
+            imageVector = Icons.Default.ContentCopy,
+            contentDescription = "Copiar",
+            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+        )
+    }
+}
+
+
+
+@Composable
+fun AjustesSmallCard(
+    icon: ImageVector,
+    text: String,
+    color: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        onClick = onClick,
+        modifier = modifier.height(100.dp),
+        shape = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            color.copy(alpha = 0.12f),
+                            color.copy(alpha = 0.03f)
+                        )
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(8.dp)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = color
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    ),
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
         }
     }
 }

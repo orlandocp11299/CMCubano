@@ -28,7 +28,7 @@ fun InicioScreen(navController: NavController) {
     val carouselItems = listOf(
         CarouselItem(
             "Ver información de la red en tiempo real",
-            Icons.Default.NetworkCheck,
+            Icons.Filled.CellTower,
             Color(0xFF2196F3),
             "red_info"
         ),
@@ -46,7 +46,7 @@ fun InicioScreen(navController: NavController) {
         ),
         CarouselItem(
             "Información precisa",
-            Icons.Default.AccountCircle,
+            Icons.Default.MenuBook,
             Color(0xFFE91E63),
             "datos"
         ),

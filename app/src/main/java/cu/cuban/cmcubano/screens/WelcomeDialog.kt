@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -58,10 +59,11 @@ fun WelcomeDialog(
                         .height(180.dp)
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.cellmapper_banner),
+                        painter = painterResource(id = R.drawable.welcome_banner_new),
                         contentDescription = "Welcome Banner",
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        contentScale = ContentScale.Crop,
+                        alignment = BiasAlignment(0f, -0.4f)
                     )
                     
                     // Gradient overlay for better text visibility if needed, or just a title
@@ -80,7 +82,7 @@ fun WelcomeDialog(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "¡Bienvenido a CellMapper Cubano!",
+                        text = "¡Bienvenido a CM Cubano!",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -91,13 +93,13 @@ fun WelcomeDialog(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
-                        text = "¿Qué es CellMapper?",
+                        text = "¿Qué es CM Cubano?",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "CellMapper es una aplicación de código abierto que permite mapear la cobertura de redes móviles. Los usuarios pueden contribuir recopilando datos sobre las torres de telefonía celular y la intensidad de la señal en diferentes ubicaciones.",
+                        text = "CM Cubano es una aplicación que te facilita controlar tus recursos, comprobar la velocidad de tu internet y acceder a funciones avanzadas.",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(top = 8.dp)
                     )
@@ -111,7 +113,7 @@ fun WelcomeDialog(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "La aplicación es compatible con la mayoría de los dispositivos Android que ejecutan Android 5.0 (Lollipop) o superior. Para obtener la mejor experiencia, se recomienda un dispositivo con GPS y acceso a datos móviles.",
+                        text = "La aplicación es compatible con los dispositivos Android que ejecutan Android 7 o superior. Para obtener la mejor experiencia, se recomienda un dispositivo con GPS y acceso a datos móviles.",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(top = 8.dp)
                     )
