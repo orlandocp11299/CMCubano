@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -74,13 +75,25 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         
-        // Solicitar permisos necesarios
-        requestRequiredPermissions()
+        // Solicitar permisos necesarios (Movido a LaunchedEffect en setContent para no bloquear el diálogo de bienvenida)
+        // requestRequiredPermissions()
         
         setContent {
             val context = LocalContext.current
             val prefs = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) }
             var amoledPref by remember { mutableStateOf(prefs.getBoolean("amoled_dark", false)) }
+            
+            // Estado para el mensaje de bienvenida
+            var showWelcome by rememberSaveable { 
+                mutableStateOf<Boolean>(prefs.getBoolean("show_welcome_screen", true)) 
+            }
+
+            // Efecto para solicitar permisos solo después del mensaje de bienvenida
+            LaunchedEffect(showWelcome) {
+                if (!showWelcome) {
+                    requestRequiredPermissions()
+                }
+            }
 
             DisposableEffect(prefs) {
                 val listener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
@@ -118,24 +131,14 @@ class MainActivity : ComponentActivity() {
                             .systemBarsPadding()
                     ) {
                         MainScreen()
-                        
-                        val context = androidx.compose.ui.platform.LocalContext.current
-                        val prefs = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) }
-                        var showWelcome by remember { 
-                            mutableStateOf<Boolean>(prefs.getBoolean("show_welcome", true)) 
-                        }
 
                         if (showWelcome) {
                             WelcomeDialog(
                                 onDismissRequest = { 
-                                    // Just close for this session, but don't save "don't show" unless explicitly asked (handled inside dialog logic if passed)
-                                    // Actually the dialog logic I wrote calls onDisableWelcome if checked when clicking Continue.
-                                    // If they just dismiss (back button), we might want to respect that too? 
-                                    // The dialog I wrote sends onDismissRequest when clicking Continue.
                                     showWelcome = false
                                 },
                                 onDisableWelcome = {
-                                    prefs.edit().putBoolean("show_welcome", false).apply()
+                                    prefs.edit().putBoolean("show_welcome_screen", false).apply()
                                 }
                             )
                         }
@@ -146,12 +149,19 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun requestRequiredPermissions() {
-        val permissions = arrayOf(
+        val permissions = mutableListOf(
             Manifest.permission.READ_PHONE_STATE,
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.READ_CONTACTS
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.READ_SMS,
+            Manifest.permission.SEND_SMS
         )
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
         
         val permissionsToRequest = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
