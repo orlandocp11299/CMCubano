@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import cu.cuban.cmcubano.utils.PremiumManager
+import cu.cuban.cmcubano.utils.NotificationScheduler
 
 
 class NotificationReceiver : BroadcastReceiver() {
@@ -33,25 +34,56 @@ class NotificationReceiver : BroadcastReceiver() {
             
             if (startTime > 0) {
                 val now = System.currentTimeMillis()
-                val diff = now - startTime
-                // Calcular días pasados basándose en la diferencia de tiempo real
-                val daysPassed = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(diff)
+                
+                // Usar Calendar para calcular la diferencia de días exactos (ignorando la hora)
+                val startCal = java.util.Calendar.getInstance().apply { timeInMillis = startTime }
+                val nowCal = java.util.Calendar.getInstance().apply { timeInMillis = now }
+                
+                startCal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                startCal.set(java.util.Calendar.MINUTE, 0)
+                startCal.set(java.util.Calendar.SECOND, 0)
+                startCal.set(java.util.Calendar.MILLISECOND, 0)
+                
+                nowCal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                nowCal.set(java.util.Calendar.MINUTE, 0)
+                nowCal.set(java.util.Calendar.SECOND, 0)
+                nowCal.set(java.util.Calendar.MILLISECOND, 0)
+                
+                val diffDays = ((nowCal.timeInMillis - startCal.timeInMillis) / (24 * 60 * 60 * 1000)).toInt()
+                val lastNotifiedDay = prefs.getInt("last_notified_day", -1)
                 
                 // Actualizar el campo oculto para reflejar la realidad
-                prefs.edit().putInt("hidden_days_passed", daysPassed.toInt()).apply()
+                prefs.edit().putInt("hidden_days_passed", diffDays).apply()
                 
-                Log.d(TAG, "Chequeo diario. Inicio: ${java.util.Date(startTime)}, Ahora: ${java.util.Date(now)}, Dias pasados: $daysPassed")
+                Log.d(TAG, "Chequeo. Inicio: ${startCal.time}, Ahora: ${nowCal.time}, DíasPasados: $diffDays, ÚltimoNotificado: $lastNotifiedDay")
                 
-                if (daysPassed >= 34) {
+                // Lógica de notificación:
+                // Si han pasado 33 días, estamos en el día 34 del plan -> Notificar "Vence mañana"
+                if (diffDays == 33 && lastNotifiedDay < 33) {
                     showNotification(
                         context, 
                         "ALERTA", 
-                        "Su paquete de datos vence mañana , este es el último recordatorio.", 
+                        "Su paquete de datos vence mañana", 
                         1001
                     )
-                } else {
-                     // Reprogramar para mañana a las 9 AM si aún no ha llegado el día
-                     scheduleNextCheck(context)
+                    prefs.edit().putInt("last_notified_day", 33).apply()
+                    Log.d(TAG, "Notificación enviada: Vence mañana (Día 34)")
+                } 
+                // Si han pasado 34 o más días, estamos en el día 35 del plan o superior -> Notificar "Vence hoy"
+                else if (diffDays >= 34 && lastNotifiedDay < 34) {
+                    showNotification(
+                        context, 
+                        "ALERTA", 
+                        "Su paquete de datos vence hoy , compre uno nuevo para conservar sus recursos.", 
+                        1002
+                    )
+                    prefs.edit().putInt("last_notified_day", 34).apply()
+                    Log.d(TAG, "Notificación enviada: Vence hoy (Día 35+)")
+                }
+
+                // Seguir programando el chequeo si aún no hemos llegado al día de vencimiento hoy
+                if (diffDays < 34) {
+                    scheduleNextCheck(context)
                 }
             }
         }
@@ -68,51 +100,7 @@ class NotificationReceiver : BroadcastReceiver() {
     }
     
     private fun scheduleNextCheck(context: Context) {
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
-        val intent = Intent(context, NotificationReceiver::class.java).apply {
-            action = "ACTION_DAILY_CHECK"
-        }
-        val pendingIntent = android.app.PendingIntent.getBroadcast(
-            context, 
-            1001, 
-            intent, 
-            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-        )
-        
-        val calendar = java.util.Calendar.getInstance().apply {
-            timeInMillis = System.currentTimeMillis()
-            set(java.util.Calendar.HOUR_OF_DAY, 9)
-            set(java.util.Calendar.MINUTE, 0)
-            set(java.util.Calendar.SECOND, 0)
-            set(java.util.Calendar.MILLISECOND, 0)
-            add(java.util.Calendar.DAY_OF_YEAR, 1) // Mañana
-        }
-        
-        try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                if (alarmManager.canScheduleExactAlarms()) {
-                     alarmManager.setExactAndAllowWhileIdle(
-                        android.app.AlarmManager.RTC_WAKEUP,
-                        calendar.timeInMillis,
-                        pendingIntent
-                    )
-                } else {
-                     alarmManager.setAndAllowWhileIdle(
-                        android.app.AlarmManager.RTC_WAKEUP,
-                        calendar.timeInMillis,
-                        pendingIntent
-                    )
-                }
-            } else {
-                 alarmManager.setExactAndAllowWhileIdle(
-                    android.app.AlarmManager.RTC_WAKEUP,
-                    calendar.timeInMillis,
-                    pendingIntent
-                )
-            }
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Error al reprogramar alarma: ${e.message}")
-        }
+        NotificationScheduler.scheduleDailyCheck(context)
     }
     
     private fun showNotification(context: Context, title: String, message: String, notificationId: Int) {

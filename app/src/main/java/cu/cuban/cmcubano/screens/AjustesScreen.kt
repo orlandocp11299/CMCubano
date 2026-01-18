@@ -157,10 +157,10 @@ fun AjustesScreen(navController: NavController) {
 
                         OutlinedTextField(
                             value = premiumCode,
-                            onValueChange = { premiumCode = it.filter { char -> char.isDigit() } },
+                            onValueChange = { premiumCode = it.filter { char -> char.isLetterOrDigit() } },
                             label = { Text("Código de activación", fontSize = 12.sp) },
                             modifier = Modifier.fillMaxWidth().height(56.dp),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                             singleLine = true,
                             isError = errorMessage.isNotEmpty(),
                             textStyle = MaterialTheme.typography.bodyMedium
@@ -254,7 +254,7 @@ fun AjustesScreen(navController: NavController) {
                     } else {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Gracias por apoyar el desarrollo de CellMapper Cubano. Todas las funciones premium están desbloqueadas.",
+                            text = "Gracias por apoyar el desarrollo de CM Cubano. Todas las funciones premium están desbloqueadas.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
@@ -387,6 +387,161 @@ fun AjustesScreen(navController: NavController) {
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.fillMaxWidth()
                             )
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.1f)
+                        )
+
+                        // Optimización de Batería
+                        val powerManager = remember { context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager }
+                        var isIgnoringBatteryOptimizations by remember {
+                            mutableStateOf(
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                    powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                                } else true
+                            )
+                        }
+
+                        // Actualizar estado al volver a la app
+                        val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+                        DisposableEffect(lifecycleOwner) {
+                            val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                                if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                                    isIgnoringBatteryOptimizations = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                        powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                                    } else true
+                                }
+                            }
+                            lifecycleOwner.lifecycle.addObserver(observer)
+                            onDispose {
+                                lifecycleOwner.lifecycle.removeObserver(observer)
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                            data = Uri.parse("package:${context.packageName}")
+                                        }
+                                        try {
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            val fallbackIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                            context.startActivity(fallbackIntent)
+                                        }
+                                    }
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (isIgnoringBatteryOptimizations) Icons.Default.BatteryFull else Icons.Default.BatteryAlert,
+                                contentDescription = null,
+                                tint = if (isIgnoringBatteryOptimizations) Color(0xFF4CAF50) else MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Optimización de batería",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Text(
+                                    text = if (isIgnoringBatteryOptimizations) "Permitido en segundo plano" else "Toca para permitir segundo plano",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (isIgnoringBatteryOptimizations) MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                                )
+                            }
+                            if (!isIgnoringBatteryOptimizations) {
+                                Icon(
+                                    imageVector = Icons.Default.ChevronRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.5f)
+                                )
+                            }
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.1f)
+                        )
+
+                        // Inicio Automático (Guía)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    val intent = Intent().apply {
+                                        action = Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+                                        data = Uri.parse("package:${context.packageName}")
+                                    }
+                                    context.startActivity(intent)
+                                    Toast.makeText(context, "Habilita 'Inicio Automático' en los ajustes de la app", Toast.LENGTH_LONG).show()
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SettingsPower,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Inicio automático",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Text(
+                                    text = "Esencial para recordatorios tras reiniciar",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.5f)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // Mensaje informativo sobre confiabilidad
+                        Surface(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "Si los recordatorios no aparecen, asegúrate de permitir el 'Inicio automático' y desactivar el 'Ahorro de batería'.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                                )
+                            }
                         }
                     }
                 }
@@ -634,7 +789,7 @@ fun AjustesScreen(navController: NavController) {
                 onDismissRequest = { showAcercaDeDialog = false },
                 title = { Text("Acerca de") },
                 text = { 
-                    Text("Versión: 1.8 Beta\nDesarrollador: Orlando\n\nCellMapper Cubano es una aplicación diseñada para la comunidad cubana interesada en el mapeo de redes móviles.")
+                    Text("Versión: 1.8 Beta\nDesarrollador: Orlando\n\nCM Cubano es una aplicación diseñada para la comunidad cubana interesada en el mapeo de redes móviles.")
                 },
                 confirmButton = {
                     TextButton(onClick = { showAcercaDeDialog = false }) {

@@ -21,14 +21,18 @@ object PremiumManager {
         return hashCode.toString().padStart(8, '0').takeLast(8)
     }
 
+    private fun generateActivationCode(reference: String): String {
+        val key = cu.cuban.cmcubano.BuildConfig.ACTIVATION_SECRET_KEY
+        val input = reference + key
+        val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
+        return bytes.joinToString("") { "%02x".format(it) }.take(8)
+    }
+
     fun validateAndActivate(context: Context, code: String): Boolean {
         val reference = getDeviceReference(context)
-        val referenceNum = reference.toLongOrNull() ?: 0L
+        val expected = generateActivationCode(reference)
         
-        // Formula: (Reference * 19223) / 32291
-        val expected = (referenceNum * 19223) / 32291
-        
-        if (code == expected.toString()) {
+        if (code.equals(expected, ignoreCase = true)) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit()
                 .putBoolean(IS_PREMIUM, true)
@@ -40,8 +44,7 @@ object PremiumManager {
     }
 
     fun getExpectedCode(reference: String): String {
-        val referenceNum = reference.toLongOrNull() ?: 0L
-        return ((referenceNum * 19223) / 32291).toString()
+        return generateActivationCode(reference)
     }
 }
 

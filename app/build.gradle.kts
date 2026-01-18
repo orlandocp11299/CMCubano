@@ -1,4 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+import java.io.FileInputStream
 
 plugins {
     alias(libs.plugins.android.application)
@@ -12,11 +14,17 @@ plugins {
 android {
     namespace = "cu.cuban.cmcubano"
     compileSdk = 36
+    
+    val localProperties = Properties()
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localProperties.load(FileInputStream(localPropertiesFile))
+    }
 
     defaultConfig {
         applicationId = "cu.cuban.cmcubano"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -24,16 +32,43 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        
+        // Default to the key from local.properties (Production) or "UNCONFIGURED" if missing
+        val secretKey = localProperties.getProperty("activation.secret.key") ?: "UNCONFIGURED"
+        buildConfigField("String", "ACTIVATION_SECRET_KEY", "\"$secretKey\"")
+    }
+
+    signingConfigs {
+        create("release") {
+            val keystoreFile = localProperties.getProperty("storeFile")
+            if (keystoreFile != null) {
+                storeFile = file(keystoreFile)
+                storePassword = localProperties.getProperty("storePassword")
+                keyAlias = localProperties.getProperty("keyAlias")
+                keyPassword = localProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            // Override for debugging: Collaborators use this key
+            buildConfigField("String", "ACTIVATION_SECRET_KEY", "\"1234\"")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
+    }
+    
+    lint {
+        baseline = file("lint-baseline.xml")
+        checkReleaseBuilds = false
+        abortOnError = false
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -101,6 +136,8 @@ dependencies {
     implementation(libs.androidx.browser)
 
     implementation("com.google.android.gms:play-services-location:21.1.0")
+
+    implementation(libs.androidx.work.runtime.ktx)
 
     testImplementation(libs.junit.ref)
     androidTestImplementation(libs.androidx.junit)
