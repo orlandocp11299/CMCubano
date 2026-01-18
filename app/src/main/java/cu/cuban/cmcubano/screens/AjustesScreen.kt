@@ -46,6 +46,7 @@ import android.widget.Toast
 
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import cu.cuban.cmcubano.BuildConfig
 
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
@@ -634,7 +635,7 @@ fun AjustesScreen(navController: NavController) {
                 onDismissRequest = { showAcercaDeDialog = false },
                 title = { Text("Acerca de") },
                 text = { 
-                    Text("Versión: 1.8 Beta\nDesarrollador: Orlando\n\nCellMapper Cubano es una aplicación diseñada para la comunidad cubana interesada en el mapeo de redes móviles.")
+                    Text("Versión: ${BuildConfig.VERSION_NAME}\nDesarrollador: Orlando\n\nCellMapper Cubano es una aplicación diseñada para la comunidad cubana interesada en el mapeo de redes móviles.")
                 },
                 confirmButton = {
                     TextButton(onClick = { showAcercaDeDialog = false }) {
