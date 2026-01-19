@@ -21,6 +21,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.border
+import cu.cuban.cmcubano.utils.PremiumManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,6 +67,9 @@ fun InicioScreen(navController: NavController) {
         )
     )
 
+    val context = LocalContext.current
+    val isPremium = remember { PremiumManager.isPremium(context) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -86,7 +92,18 @@ fun InicioScreen(navController: NavController) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 16.dp)
+                .then(
+                    if (isPremium) {
+                        Modifier.border(
+                            width = 1.8.dp,
+                            brush = Brush.linearGradient(
+                                colors = listOf(Color(0xFFFFA000), Color(0xFFFFD700))
+                            ),
+                            shape = RoundedCornerShape(24.dp)
+                        )
+                    } else Modifier
+                ),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer

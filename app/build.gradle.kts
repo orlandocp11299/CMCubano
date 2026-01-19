@@ -24,9 +24,9 @@ android {
     defaultConfig {
         applicationId = "cu.cuban.cmcubano"
         minSdk = 24
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        targetSdk = 36
+        versionCode = 8
+        versionName = "0.1.184"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

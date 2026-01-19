@@ -28,6 +28,15 @@ class NotificationReceiver : BroadcastReceiver() {
                 Log.d(TAG, "Chequeo diario ignorado: El usuario no es Premium")
                 return
             }
+
+            val currentHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+            if (currentHour < 9 || currentHour >= 22) {
+                Log.d(TAG, "Chequeo diario postergado: Horario restringido ($currentHour:00). Se procesará en la ventana de 9:00 a 22:00.")
+                // Asegurar que el próximo chequeo esté programado para las 9 AM
+                NotificationScheduler.scheduleDailyCheck(context)
+                return
+            }
+
             val prefs = context.getSharedPreferences("recordatorio_prefs", Context.MODE_PRIVATE)
             val startTime = prefs.getLong("hidden_start_date", 0L)
 
@@ -58,31 +67,31 @@ class NotificationReceiver : BroadcastReceiver() {
                 Log.d(TAG, "Chequeo. Inicio: ${startCal.time}, Ahora: ${nowCal.time}, DíasPasados: $diffDays, ÚltimoNotificado: $lastNotifiedDay")
                 
                 // Lógica de notificación:
-                // Si han pasado 33 días, estamos en el día 34 del plan -> Notificar "Vence mañana"
-                if (diffDays == 33 && lastNotifiedDay < 33) {
+                // Si han pasado 34 días, estamos en el día 35 del plan -> Notificar "Vence mañana"
+                if (diffDays == 34 && lastNotifiedDay < 34) {
                     showNotification(
                         context, 
                         "ALERTA", 
                         "Su paquete de datos vence mañana", 
                         1001
                     )
-                    prefs.edit().putInt("last_notified_day", 33).apply()
-                    Log.d(TAG, "Notificación enviada: Vence mañana (Día 34)")
+                    prefs.edit().putInt("last_notified_day", 34).apply()
+                    Log.d(TAG, "Notificación enviada: Vence mañana (Día 35)")
                 } 
-                // Si han pasado 34 o más días, estamos en el día 35 del plan o superior -> Notificar "Vence hoy"
-                else if (diffDays >= 34 && lastNotifiedDay < 34) {
+                // Si han pasado 35 o más días, estamos en el día 36 del plan o superior -> Notificar "Vence hoy"
+                else if (diffDays >= 35 && lastNotifiedDay < 35) {
                     showNotification(
                         context, 
                         "ALERTA", 
                         "Su paquete de datos vence hoy , compre uno nuevo para conservar sus recursos.", 
                         1002
                     )
-                    prefs.edit().putInt("last_notified_day", 34).apply()
-                    Log.d(TAG, "Notificación enviada: Vence hoy (Día 35+)")
+                    prefs.edit().putInt("last_notified_day", 35).apply()
+                    Log.d(TAG, "Notificación enviada: Vence hoy (Día 36+)")
                 }
 
                 // Seguir programando el chequeo si aún no hemos llegado al día de vencimiento hoy
-                if (diffDays < 34) {
+                if (diffDays < 35) {
                     scheduleNextCheck(context)
                 }
             }
