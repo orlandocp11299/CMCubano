@@ -158,11 +158,12 @@ fun AjustesScreen(navController: NavController) {
 
                         OutlinedTextField(
                             value = premiumCode,
-                            onValueChange = { premiumCode = it.filter { char -> char.isDigit() } },
+                            onValueChange = { premiumCode = it },
                             label = { Text("Código de activación", fontSize = 12.sp) },
-                            modifier = Modifier.fillMaxWidth().height(56.dp),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().height(120.dp),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                            singleLine = false,
+                            maxLines = 5,
                             isError = errorMessage.isNotEmpty(),
                             textStyle = MaterialTheme.typography.bodyMedium
                         )
@@ -255,7 +256,7 @@ fun AjustesScreen(navController: NavController) {
                     } else {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Gracias por apoyar el desarrollo de CellMapper Cubano. Todas las funciones premium están desbloqueadas.",
+                            text = "Gracias por apoyar el desarrollo de CM Cubano. Todas las funciones premium están desbloqueadas.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
@@ -389,6 +390,88 @@ fun AjustesScreen(navController: NavController) {
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.1f)
+                        )
+
+                        // Optimización de Batería
+                        val powerManager = remember { context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager }
+                        var isIgnoringBatteryOptimizations by remember {
+                            mutableStateOf(
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                    powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                                } else true
+                            )
+                        }
+
+                        // Actualizar estado al volver a la app
+                        val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+                        DisposableEffect(lifecycleOwner) {
+                            val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                                if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                                    isIgnoringBatteryOptimizations = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                        powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                                    } else true
+                                }
+                            }
+                            lifecycleOwner.lifecycle.addObserver(observer)
+                            onDispose {
+                                lifecycleOwner.lifecycle.removeObserver(observer)
+                            }
+                        }
+
+                        if (!isIgnoringBatteryOptimizations) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                                data = Uri.parse("package:${context.packageName}")
+                                            }
+                                            try {
+                                                context.startActivity(intent)
+                                            } catch (e: Exception) {
+                                                val fallbackIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                                context.startActivity(fallbackIntent)
+                                            }
+                                        }
+                                    }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.BatteryAlert,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Optimización de batería",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                    Text(
+                                        text = "Permitir este ajuste es indispensable para que los recordatorios funcionen correctamente.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.ChevronRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.5f)
+                                )
+                            }
+                        }
+
+
                     }
                 }
             }

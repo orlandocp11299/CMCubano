@@ -30,6 +30,7 @@ import androidx.compose.animation.core.*
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
+import cu.cuban.cmcubano.utils.NotificationScheduler
 
 
 
@@ -365,7 +366,7 @@ fun PlanesMenuScreen(navController: NavController) {
                                 
                                 if (lastSmsTimestamp > 0) {
                                     val lastDate = Date(lastSmsTimestamp)
-                                    val nextDate = Date(lastSmsTimestamp + (34L * 24 * 60 * 60 * 1000))
+                                    val nextDate = Date(lastSmsTimestamp + (35L * 24 * 60 * 60 * 1000))
                                     
                                     DetailItem(
                                         "Compra del Plan:",
@@ -387,7 +388,7 @@ fun PlanesMenuScreen(navController: NavController) {
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
                                     DetailItem(
-                                        "Próxima alerta:",
+                                        "Vence el:",
                                         nextAlertDateFormatter.format(nextDate),
                                         Icons.Default.Event
                                     )
@@ -500,7 +501,12 @@ fun PlanesMenuScreen(navController: NavController) {
                                             recordatorioPrefs.edit()
                                                 .putLong("hidden_start_date", finalMillis)
                                                 .putInt("hidden_days_passed", 0)
+                                                .putInt("last_notified_day", -1) // Reset notifications logic
                                                 .apply()
+                                            
+                                            // Schedule and Trigger immediate check
+                                            NotificationScheduler.scheduleDailyCheck(context)
+                                            NotificationScheduler.triggerImmediateCheck(context)
                                         }
                                         showDatePicker = false
                                     },

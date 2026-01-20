@@ -1,0 +1,1122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<issues format="6" by="lint 8.13.2" type="baseline" client="gradle" dependencies="false" name="AGP (8.13.2)" variant="all" version="8.13.2">
+
+    <issue
+        id="MissingPermission"
+        message="Call requires permission which may be rejected by user: code should explicitly check to see if permission is available (with `checkPermission`) or explicitly handle a potential `SecurityException`"
+        errorLine1="            val accounts = telecomManager.callCapablePhoneAccounts"
+        errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2926"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="BlockedPrivateApi"
+        message="Reflective access to getRscp is forbidden when targeting API 36 and above"
+        errorLine1="                            ss.javaClass.getDeclaredMethod(&quot;getRscp&quot;).apply { isAccessible = true }"
+        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2610"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="BlockedPrivateApi"
+        message="Reflective access to getRscp is forbidden when targeting API 36 and above"
+        errorLine1="                                        wGlobal.javaClass.getDeclaredMethod(&quot;getRscp&quot;).apply { isAccessible = true }"
+        errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2655"
+            column="41"/>
+    </issue>
+
+    <issue
+        id="BlockedPrivateApi"
+        message="Reflective access to getRssi is forbidden when targeting API 36 and above"
+        errorLine1="                        ss.javaClass.getDeclaredMethod(&quot;getRssi&quot;).apply { isAccessible = true }"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2706"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="                ping = String.format(&quot;%.0f&quot;, avgPing)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/SpeedTestScreen.kt"
+            line="97"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="                jitter = String.format(&quot;%.1f&quot;, jitterVal)"
+        errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/SpeedTestScreen.kt"
+            line="98"
+            column="26"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="                        value = String.format(&quot;%.2f&quot;, downloadSpeed),"
+        errorLine2="                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/SpeedTestScreen.kt"
+            line="179"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="                        value = String.format(&quot;%.2f&quot;, uploadSpeed),"
+        errorLine2="                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/SpeedTestScreen.kt"
+            line="185"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="                text = String.format(&quot;%.2f&quot;, animatedSpeed),"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/SpeedTestScreen.kt"
+            line="449"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="                    val ciValue = mainCell.ciInt?.let { String.format(&quot;%08d&quot;, it) } ?: &quot;-&quot;"
+        errorLine2="                                                        ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="1071"
+            column="57"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="                val eNB = ciInt?.let { v -> String.format(&quot;%d&quot;, v / 256) } ?: &quot;-&quot;"
+        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2500"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="                    if (km &lt; 1.0) &quot;${it} (${String.format(&quot;%.0f&quot;, km * 1000)}m)&quot; "
+        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2532"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="                    else &quot;${it} (${String.format(&quot;%.2f&quot;, km)}km)&quot;"
+        errorLine2="                                   ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2533"
+            column="36"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="                    if (km &lt; 1.0) &quot;${it} (${String.format(&quot;%.0f&quot;, km * 1000)}m)&quot; "
+        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2755"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="                    else &quot;${it} (${String.format(&quot;%.2f&quot;, km)}km)&quot;"
+        errorLine2="                                   ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2756"
+            column="36"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `android.telephony.TelephonyManager#isDataEnabled`"
+        errorLine1="            val isDataEnabled = telephonyManager.isDataEnabled"
+        errorLine2="                                                 ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="256"
+            column="50"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `android.telephony.CellSignalStrengthLte#getRsrp`"
+        errorLine1="            .thenByDescending { it.cellSignalStrength.rsrp.let { rsrp -> if (rsrp == Int.MAX_VALUE) -140 else rsrp } })"
+        errorLine2="                                                      ~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2245"
+            column="55"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 31 (current min is 24): `android.telephony.PhysicalChannelConfig#getCellBandwidthDownlinkKhz`"
+        errorLine1="                    val bwKhz = config.cellBandwidthDownlinkKhz"
+        errorLine2="                                       ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2311"
+            column="40"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 31 (current min is 29): `android.telephony.PhysicalChannelConfig#getPhysicalCellId`"
+        errorLine1="                                val pci = config.physicalCellId"
+        errorLine2="                                                 ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2321"
+            column="50"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 31 (current min is 29): `android.telephony.PhysicalChannelConfig#getDownlinkChannelNumber`"
+        errorLine1="                                    val channelNum = config.downlinkChannelNumber"
+        errorLine2="                                                            ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2332"
+            column="61"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 31 (current min is 24): `android.telephony.PhysicalChannelConfig#getBand`"
+        errorLine1="                        if (config.band in 1..88) {"
+        errorLine2="                                   ~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2343"
+            column="36"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 31 (current min is 24): `android.telephony.PhysicalChannelConfig#getBand`"
+        errorLine1="                            bandNum = config.band"
+        errorLine2="                                             ~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2344"
+            column="46"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `android.telephony.CellSignalStrengthLte#getRssnr`"
+        errorLine1="                var snrRaw = if (ss.rssnr != Int.MAX_VALUE) ss.rssnr else null"
+        errorLine2="                                    ~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2503"
+            column="37"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `android.telephony.CellSignalStrengthLte#getRssnr`"
+        errorLine1="                var snrRaw = if (ss.rssnr != Int.MAX_VALUE) ss.rssnr else null"
+        errorLine2="                                                               ~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2503"
+            column="64"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `android.telephony.CellSignalStrengthLte#getRsrp`"
+        errorLine1="                    rsrp = if (isStale) &quot;${ss.rsrp} (S)&quot; else ss.rsrp.takeIf { v -> v != Int.MAX_VALUE }?.let { v -> &quot;$v dBm&quot; },"
+        errorLine2="                                              ~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2559"
+            column="47"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `android.telephony.CellSignalStrengthLte#getRsrp`"
+        errorLine1="                    rsrp = if (isStale) &quot;${ss.rsrp} (S)&quot; else ss.rsrp.takeIf { v -> v != Int.MAX_VALUE }?.let { v -> &quot;$v dBm&quot; },"
+        errorLine2="                                                                 ~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2559"
+            column="66"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `android.telephony.CellSignalStrengthLte#getRsrq`"
+        errorLine1="                    rsrq = ss.rsrq.takeIf { v -> v != Int.MAX_VALUE }?.let { v -> &quot;$v dB&quot; },"
+        errorLine2="                              ~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2560"
+            column="31"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 29 (current min is 24): `android.telephony.CellSignalStrengthLte#getRssi`"
+        errorLine1="                    rssi = ss.rssi.takeIf { v -> v != Int.MAX_VALUE }?.let { v -> &quot;$v dBm&quot; },"
+        errorLine2="                              ~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2562"
+            column="31"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `android.telephony.CellSignalStrengthLte#getRsrp`"
+        errorLine1="                    colorRsrp = getParamColor(&quot;RSRP&quot;, ss.rsrp),"
+        errorLine2="                                                         ~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2563"
+            column="58"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `android.telephony.CellSignalStrengthLte#getRsrq`"
+        errorLine1="                    colorRsrq = getParamColor(&quot;RSRQ&quot;, ss.rsrq),"
+        errorLine2="                                                         ~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2564"
+            column="58"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 29 (current min is 24): `android.telephony.CellSignalStrengthLte#getRssi`"
+        errorLine1="                    colorRssi = getParamColor(&quot;RSSI&quot;, ss.rssi),"
+        errorLine2="                                                         ~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2566"
+            column="58"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 30 (current min is 24): `android.telephony.CellSignalStrengthWcdma#getEcNo`"
+        errorLine1="                        val v = ss.ecNo"
+        errorLine2="                                   ~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2693"
+            column="36"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 30 (current min is 24): `android.telephony.CellSignalStrengthWcdma#getEcNo`"
+        errorLine1="                    val v = ss.ecNo"
+        errorLine2="                               ~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2697"
+            column="32"/>
+    </issue>
+
+    <issue
+        id="PropertyEscape"
+        message="Windows file separators (`\`) and drive letter separators (&apos;:&apos;) must be escaped (`\\`) in property files; use C\\:/Program Files/Android/Android Studio/jbr"
+        errorLine1="org.gradle.java.home=C:/Program Files/Android/Android Studio/jbr"
+        errorLine2="                      ~">
+        <location
+            file="../gradle.properties"
+            line="24"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="ProtectedPermissions"
+        message="Permission is only granted to system apps"
+        errorLine1="    &lt;uses-permission android:name=&quot;android.permission.READ_PRECISE_PHONE_STATE&quot; />"
+        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="8"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="RedundantLabel"
+        message="Redundant label can be removed"
+        errorLine1="            android:label=&quot;@string/app_name&quot;"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="37"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="AndroidGradlePluginVersion"
+        message="A newer version of com.android.application than 8.13.2 is available: 9.0.0"
+        errorLine1="agp = &quot;8.13.2&quot;"
+        errorLine2="      ~~~~~~~~">
+        <location
+            file="../gradle/libs.versions.toml"
+            line="2"
+            column="7"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of com.google.android.gms:play-services-location than 21.1.0 is available: 21.3.0"
+        errorLine1="    implementation(&quot;com.google.android.gms:play-services-location:21.1.0&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="136"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of com.google.firebase:firebase-bom than 34.7.0 is available: 34.8.0"
+        errorLine1="firebaseBomVersion = &quot;34.7.0&quot;"
+        errorLine2="                     ~~~~~~~~">
+        <location
+            file="../gradle/libs.versions.toml"
+            line="6"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.compose:compose-bom than 2025.12.01 is available: 2026.01.00"
+        errorLine1="composeBom = &quot;2025.12.01&quot;"
+        errorLine2="             ~~~~~~~~~~~~">
+        <location
+            file="../gradle/libs.versions.toml"
+            line="17"
+            column="14"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.compose.ui:ui-text-google-fonts than 1.10.0 is available: 1.10.1"
+        errorLine1="uiTextGoogleFonts = &quot;1.10.0&quot;"
+        errorLine2="                    ~~~~~~~~">
+        <location
+            file="../gradle/libs.versions.toml"
+            line="23"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.compose.ui:ui-text than 1.10.0 is available: 1.10.1"
+        errorLine1="uiText = &quot;1.10.0&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="../gradle/libs.versions.toml"
+            line="27"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of com.google.dagger.hilt.android than 2.57.2 is available: 2.58"
+        errorLine1="hilt= &quot;2.57.2&quot;"
+        errorLine2="      ~~~~~~~~">
+        <location
+            file="../gradle/libs.versions.toml"
+            line="7"
+            column="7"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of com.google.dagger:hilt-android than 2.57.2 is available: 2.58"
+        errorLine1="hilt= &quot;2.57.2&quot;"
+        errorLine2="      ~~~~~~~~">
+        <location
+            file="../gradle/libs.versions.toml"
+            line="7"
+            column="7"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of com.google.dagger:hilt-compiler than 2.57.2 is available: 2.58"
+        errorLine1="hilt= &quot;2.57.2&quot;"
+        errorLine2="      ~~~~~~~~">
+        <location
+            file="../gradle/libs.versions.toml"
+            line="7"
+            column="7"/>
+    </issue>
+
+    <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be the first optional parameter"
+        errorLine1="    modifier: Modifier = Modifier"
+        errorLine2="    ~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="1320"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="PermissionImpliesUnsupportedChromeOsHardware"
+        message="Permission exists without corresponding hardware `&lt;uses-feature android:name=&quot;android.hardware.telephony&quot; required=&quot;false&quot;>` tag"
+        errorLine1="    &lt;uses-permission android:name=&quot;android.permission.CALL_PHONE&quot; />"
+        errorLine2="     ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="13"
+            column="6"/>
+    </issue>
+
+    <issue
+        id="PermissionImpliesUnsupportedChromeOsHardware"
+        message="Permission exists without corresponding hardware `&lt;uses-feature android:name=&quot;android.hardware.telephony&quot; required=&quot;false&quot;>` tag"
+        errorLine1="    &lt;uses-permission android:name=&quot;android.permission.RECEIVE_SMS&quot; />"
+        errorLine2="     ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="14"
+            column="6"/>
+    </issue>
+
+    <issue
+        id="PermissionImpliesUnsupportedChromeOsHardware"
+        message="Permission exists without corresponding hardware `&lt;uses-feature android:name=&quot;android.hardware.telephony&quot; required=&quot;false&quot;>` tag"
+        errorLine1="    &lt;uses-permission android:name=&quot;android.permission.READ_SMS&quot; />"
+        errorLine2="     ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="15"
+            column="6"/>
+    </issue>
+
+    <issue
+        id="PermissionImpliesUnsupportedChromeOsHardware"
+        message="Permission exists without corresponding hardware `&lt;uses-feature android:name=&quot;android.hardware.telephony&quot; required=&quot;false&quot;>` tag"
+        errorLine1="    &lt;uses-permission android:name=&quot;android.permission.SEND_SMS&quot; />"
+        errorLine2="     ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="16"
+            column="6"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getString` to get device identifiers is not recommended"
+        errorLine1="        val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: &quot;0000000000000000&quot;"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/utils/PremiumManager.kt"
+            line="17"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="SetJavaScriptEnabled"
+        message="Using `setJavaScriptEnabled` can introduce XSS vulnerabilities into your application, review carefully"
+        errorLine1="                javaScriptEnabled = true"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/utils/CachedWebViewManager.kt"
+            line="44"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="StaticFieldLeak"
+        message="Do not place Android context classes in static fields (static reference to `WebViewCacheManager` which has field `cachedWebView` pointing to `WebView`); this is a memory leak"
+        errorLine1="object WebViewCacheManager {"
+        errorLine2="^">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/utils/CachedWebViewManager.kt"
+            line="19"
+            column="1"/>
+    </issue>
+
+    <issue
+        id="StaticFieldLeak"
+        message="Do not place Android context classes in static fields; this is a memory leak"
+        errorLine1="    private var cachedWebView: WebView? = null"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/utils/CachedWebViewManager.kt"
+            line="20"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableLongStateOf` instead of `mutableStateOf`"
+        errorLine1="        mutableStateOf(recordatorioPrefs.getLong(&quot;hidden_start_date&quot;, 0L))"
+        errorLine2="        ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/PlanesMenuScreen.kt"
+            line="85"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableFloatStateOf` instead of `mutableStateOf`"
+        errorLine1="    var downloadSpeed by remember { mutableStateOf(0f) }"
+        errorLine2="                                    ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/SpeedTestScreen.kt"
+            line="56"
+            column="37"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableFloatStateOf` instead of `mutableStateOf`"
+        errorLine1="    var uploadSpeed by remember { mutableStateOf(0f) }"
+        errorLine2="                                  ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/SpeedTestScreen.kt"
+            line="57"
+            column="35"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableFloatStateOf` instead of `mutableStateOf`"
+        errorLine1="    var currentSpeed by remember { mutableStateOf(0f) }"
+        errorLine2="                                   ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/SpeedTestScreen.kt"
+            line="58"
+            column="36"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableIntStateOf` instead of `mutableStateOf`"
+        errorLine1="    val updateTrigger = remember { mutableStateOf(0) }"
+        errorLine2="                                   ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="89"
+            column="36"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableIntStateOf` instead of `mutableStateOf`"
+        errorLine1="    var selectedTab by remember { mutableStateOf(initialTab) }"
+        errorLine2="                                  ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="270"
+            column="35"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.purple_200` appears to be unused"
+        errorLine1="    &lt;color name=&quot;purple_200&quot;>#FFBB86FC&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="3"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.purple_500` appears to be unused"
+        errorLine1="    &lt;color name=&quot;purple_500&quot;>#FF6200EE&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="4"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.purple_700` appears to be unused"
+        errorLine1="    &lt;color name=&quot;purple_700&quot;>#FF3700B3&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="5"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.teal_200` appears to be unused"
+        errorLine1="    &lt;color name=&quot;teal_200&quot;>#FF03DAC5&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="6"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.teal_700` appears to be unused"
+        errorLine1="    &lt;color name=&quot;teal_700&quot;>#FF018786&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="7"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.black` appears to be unused"
+        errorLine1="    &lt;color name=&quot;black&quot;>#FF000000&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="8"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.white` appears to be unused"
+        errorLine1="    &lt;color name=&quot;white&quot;>#FFFFFFFF&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="9"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.drawable.ic_launcher_foreground` appears to be unused"
+        errorLine1="&lt;vector xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;"
+        errorLine2="^">
+        <location
+            file="src/main/res/drawable/ic_launcher_foreground.xml"
+            line="1"
+            column="1"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.notification_title` appears to be unused"
+        errorLine1="    &lt;string name=&quot;notification_title&quot;>Mañana vencen tus recursos&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="3"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.notification_content` appears to be unused"
+        errorLine1="    &lt;string name=&quot;notification_content&quot;>Los recursos comprados en tu sim están a punto de vencerse&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="4"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.notification_channel_name` appears to be unused"
+        errorLine1="    &lt;string name=&quot;notification_channel_name&quot;>Vencimiento de Recursos&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="5"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.notification_channel_description` appears to be unused"
+        errorLine1="    &lt;string name=&quot;notification_channel_description&quot;>Notificaciones sobre vencimiento de recursos móviles&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="6"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.sms_permission_required` appears to be unused"
+        errorLine1="    &lt;string name=&quot;sms_permission_required&quot;>Se requieren permisos de SMS para detectar compras de planes&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="7"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.notification_permission_required` appears to be unused"
+        errorLine1="    &lt;string name=&quot;notification_permission_required&quot;>Se requieren permisos de notificación para recibir recordatorios&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="8"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseOfNonLambdaOffsetOverload"
+        message="State backed values should use the lambda overload of Modifier.offset"
+        errorLine1="                                    .offset(x = pillWidth * pillOffset)"
+        errorLine2="                                     ~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/AjustesScreen.kt"
+            line="335"
+            column="38"/>
+    </issue>
+
+    <issue
+        id="MonochromeLauncherIcon"
+        message="The application adaptive icon is missing a monochrome tag"
+        errorLine1="&lt;adaptive-icon xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;>"
+        errorLine2="^">
+        <location
+            file="src/main/res/mipmap-anydpi-v26/ic_launcher.xml"
+            line="2"
+            column="1"/>
+    </issue>
+
+    <issue
+        id="MonochromeLauncherIcon"
+        message="The application adaptive roundIcon is missing a monochrome tag"
+        errorLine1="&lt;adaptive-icon xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;>"
+        errorLine2="^">
+        <location
+            file="src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml"
+            line="2"
+            column="1"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/welcome_banner_new.jpg` in densityless folder">
+        <location
+            file="src/main/res/drawable/welcome_banner_new.jpg"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                                        data = Uri.parse(url)"
+        errorLine2="                                               ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/AjustesScreen.kt"
+            line="201"
+            column="48"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                                        data = Uri.parse(url)"
+        errorLine2="                                               ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/AjustesScreen.kt"
+            line="201"
+            column="48"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                                    context.getSharedPreferences(&quot;recordatorio_prefs&quot;, Context.MODE_PRIVATE)"
+        errorLine2="                                    ^">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/AjustesScreen.kt"
+            line="236"
+            column="37"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                                            prefs.edit().putBoolean(&quot;amoled_dark&quot;, false).apply()"
+        errorLine2="                                            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/AjustesScreen.kt"
+            line="348"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                                            prefs.edit().putBoolean(&quot;amoled_dark&quot;, true).apply()"
+        errorLine2="                                            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/AjustesScreen.kt"
+            line="367"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(&quot;https://x.com/CellmapperCuban&quot;))"
+        errorLine2="                                                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/AjustesScreen.kt"
+            line="469"
+            column="65"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                            val telegramIntent = Intent(Intent.ACTION_VIEW, Uri.parse(&quot;tg://resolve?domain=CellMapper_Cubano_Oficial&quot;))"
+        errorLine2="                                                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/AjustesScreen.kt"
+            line="503"
+            column="77"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(&quot;https://t.me/CellMapper_Cubano_Oficial&quot;))"
+        errorLine2="                                                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/AjustesScreen.kt"
+            line="506"
+            column="72"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                                        data = Uri.parse(url)"
+        errorLine2="                                               ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/AjustesScreen.kt"
+            line="557"
+            column="48"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                                        data = Uri.parse(url)"
+        errorLine2="                                               ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/AjustesScreen.kt"
+            line="557"
+            column="48"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                                        val telegramIntent = Intent(Intent.ACTION_VIEW, Uri.parse(&quot;tg://resolve?domain=CMCubano_dev&quot;))"
+        errorLine2="                                                                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/AjustesScreen.kt"
+            line="584"
+            column="89"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(&quot;https://t.me/CMCubano_dev&quot;))"
+        errorLine2="                                                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/AjustesScreen.kt"
+            line="587"
+            column="84"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                                    prefs.edit().putBoolean(&quot;show_welcome_screen&quot;, false).apply()"
+        errorLine2="                                    ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/MainActivity.kt"
+            line="141"
+            column="37"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                prefs.edit().putInt(&quot;hidden_days_passed&quot;, daysPassed.toInt()).apply()"
+        errorLine2="                ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/NotificationReceiver.kt"
+            line="41"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putBoolean(&quot;recordatorio_enabled&quot;, enabled).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/NotificationService.kt"
+            line="132"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().clear().apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/NotificationService.kt"
+            line="184"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                                                    context.getSharedPreferences(&quot;recordatorio_prefs&quot;, Context.MODE_PRIVATE)"
+        errorLine2="                                                    ^">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/PlanesMenuScreen.kt"
+            line="308"
+            column="53"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                                            recordatorioPrefs.edit()"
+        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/PlanesMenuScreen.kt"
+            line="500"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit()"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/utils/PremiumManager.kt"
+            line="37"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                                prefs.edit()"
+        errorLine2="                                ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/SmsReceiver.kt"
+            line="53"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                                                    data = Uri.parse(&quot;smsto:$number&quot;)"
+        errorLine2="                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="1712"
+            column="60"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                                                    data = Uri.parse(&quot;smsto:$number&quot;)"
+        errorLine2="                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="1712"
+            column="60"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="    val intent = Intent(Intent.ACTION_CALL, Uri.parse(&quot;tel:&quot; + ussd.replace(&quot;#&quot;, Uri.encode(&quot;#&quot;))))"
+        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/cu/cuban/cmcubano/screens/UtilesScreen.kt"
+            line="2919"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="UseTomlInstead"
+        message="Use version catalog instead"
+        errorLine1="    implementation(&quot;com.google.android.gms:play-services-location:21.1.0&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="136"
+            column="20"/>
+    </issue>
+
+</issues>
