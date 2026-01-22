@@ -7,4 +7,13 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- Widget Premium Colors -->
+    <color name="widget_bg_start">#1A1A2E</color>
+    <color name="widget_bg_end">#16213E</color>
+    <color name="widget_accent">#0F3460</color>
+    <color name="widget_text_primary">#E94560</color>
+    <color name="widget_text_secondary">#D1D1D1</color>
+    <color name="widget_divider">#2A2A40</color>
+    <color name="gold">#FFD700</color>
 </resources>

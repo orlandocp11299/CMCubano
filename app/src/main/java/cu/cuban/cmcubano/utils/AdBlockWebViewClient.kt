@@ -28,13 +28,12 @@ class AdBlockWebViewClient : WebViewClient() {
         "advertisement"
     )
 
-    private val cssInject = """
+    private val jsInject = """
         javascript:(function() {
-            // Crear y agregar estilos CSS para ocultar anuncios
+            // 1. Inyectar CSS para ocultar anuncios
             var style = document.createElement('style');
             style.type = 'text/css';
             style.innerHTML = `
-                /* Ocultar elementos de marketing y publicidad */
                 div[class*="ad-"],
                 div[id*="ad-"],
                 iframe[src*="ads"],
@@ -54,6 +53,35 @@ class AdBlockWebViewClient : WebViewClient() {
                 }
             `;
             document.head.appendChild(style);
+
+            // 2. Función para auto-aceptar cookies y términos
+            function autoAccept() {
+                // Botón "Got it!" (Cookies)
+                var cookiesBtn = document.querySelector('.cc-btn.cc-dismiss');
+                if (cookiesBtn && cookiesBtn.offsetParent !== null) {
+                    cookiesBtn.click();
+                    console.log('Cookies accepted');
+                }
+
+                // Botón "I Agree" (Términos)
+                var buttons = document.querySelectorAll('button.btn-primary, .btn.btn-primary');
+                for (var i = 0; i < buttons.length; i++) {
+                    if (buttons[i].textContent.trim().toLowerCase() === 'i agree' && buttons[i].offsetParent !== null) {
+                        buttons[i].click();
+                        console.log('Terms accepted');
+                        break;
+                    }
+                }
+            }
+
+            // Ejecutar inmediatamente y luego periódicamente por si cargan lento
+            autoAccept();
+            var interval = setInterval(autoAccept, 1000);
+            
+            // Detener el intervalo después de 15 segundos para no consumir recursos
+            setTimeout(function() {
+                clearInterval(interval);
+            }, 15000);
         })()
     """
 
@@ -75,6 +103,6 @@ class AdBlockWebViewClient : WebViewClient() {
     override fun onPageFinished(view: WebView, url: String) {
         super.onPageFinished(view, url)
         // Inyectar CSS y JavaScript cuando la página termine de cargar
-        view.evaluateJavascript(cssInject, null)
+        view.evaluateJavascript(jsInject, null)
     }
 } 

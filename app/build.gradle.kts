@@ -26,7 +26,7 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 8
-        versionName = "0.1.184"
+        versionName = "0.2.210126 beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -52,11 +52,14 @@ android {
 
     buildTypes {
         debug {
+            isMinifyEnabled = false
+            isShrinkResources = false
             // Override for debugging: Collaborators use this key
             buildConfigField("String", "ACTIVATION_SECRET_KEY", "\"1234\"")
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

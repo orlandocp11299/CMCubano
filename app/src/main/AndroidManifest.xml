@@ -74,6 +74,21 @@
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
+        <receiver
+            android:name=".BalanceWidgetProvider"
+            android:enabled="true"
+            android:exported="true"
+            android:label="Balance CM Cubano">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="cu.cuban.cmcubano.ACTION_UPDATE_BALANCE" />
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/balance_widget_info" />
+        </receiver>
     </application>
 
 </manifest>
