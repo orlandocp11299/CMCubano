@@ -243,6 +243,7 @@ fun MainScreen() {
             composable("mapa") { MapaScreen(navController) }
             composable("mas") { AjustesScreen(navController) }
             composable("speedtest") { SpeedTestScreen(navController) }
+
         }
     }
 }

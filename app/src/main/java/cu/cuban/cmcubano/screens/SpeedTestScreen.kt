@@ -28,6 +28,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import cu.cuban.cmcubano.utils.VibrationManager
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -59,9 +61,11 @@ fun SpeedTestScreen(navController: NavController) {
     var showConnectionWarning by remember { mutableStateOf(false) }
     
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     val startTest: () -> Unit = {
         if (state == TestState.IDLE || state == TestState.FINISHED) {
+            VibrationManager.vibrate(context)
             scope.launch {
                 val connected = isOnline()
                 if (!connected) {

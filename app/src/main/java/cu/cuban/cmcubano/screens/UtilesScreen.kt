@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.*
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import kotlinx.coroutines.*
+import cu.cuban.cmcubano.utils.VibrationManager
+import cu.cuban.cmcubano.utils.EnbNameManager
 
 // Data class para planes y consultas con iconos
 private data class PlanItem(
@@ -216,6 +218,12 @@ fun UtilesScreen(
     var physicalChannelConfigList by remember { mutableStateOf<List<PhysicalChannelConfig>>(emptyList()) }
     var isProcessingCells by remember { mutableStateOf(false) }
     var showInitialLoading by remember { mutableStateOf(true) }
+    
+    // Estados para el diálogo de edición de nombre de eNB
+    var showEnbNameDialog by remember { mutableStateOf(false) }
+    var currentEnbId by remember { mutableStateOf("") }
+    var enbNameInput by remember { mutableStateOf("") }
+    var enbNameUpdateTrigger by remember { mutableIntStateOf(0) }
 
     // Ocultar carga inicial después de un tiempo
     LaunchedEffect(Unit) {
@@ -505,6 +513,7 @@ fun UtilesScreen(
                             .clip(RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f))
                             .clickable {
+                                VibrationManager.vibrate(context)
                                 if (activeSubscriptions.size > 1) {
                                     selectedSimIndex = if (selectedSimIndex == 0) 1 else 0
                                 }
@@ -564,7 +573,10 @@ fun UtilesScreen(
                 tabs.forEachIndexed { index, tab ->
                     Tab(
                         selected = selectedTab == index,
-                        onClick = { selectedTab = index },
+                        onClick = { 
+                            VibrationManager.vibrate(context)
+                            selectedTab = index 
+                        },
                         icon = {
                             Icon(
                                 imageVector = tab.second,
@@ -599,6 +611,7 @@ fun UtilesScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = {
+                        VibrationManager.vibrate(context)
                         if (selectedTab == 2 && selectedPlanesCategory != null) {
                             if (useNavForPlanesCategory) {
                                 navController.popBackStack()
@@ -621,6 +634,7 @@ fun UtilesScreen(
                             .clip(RoundedCornerShape(8.dp))
                             .background(MaterialTheme.colorScheme.primaryContainer)
                             .clickable {
+                                VibrationManager.vibrate(context)
                                 if (activeSubscriptions.size > 1) {
                                     selectedSimIndex = if (selectedSimIndex == 0) 1 else 0
                                 }
@@ -877,7 +891,15 @@ fun UtilesScreen(
                             ) {
                                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                     cellRowsState?.let { data ->
-                                        NSGMainPanelOptimized(data)
+                                        NSGMainPanelOptimized(
+                                            data = data,
+                                            onEnbClick = { enbId ->
+                                                currentEnbId = enbId
+                                                enbNameInput = EnbNameManager.getEnbName(context, enbId) ?: ""
+                                                showEnbNameDialog = true
+                                            },
+                                            enbNameUpdateTrigger = enbNameUpdateTrigger
+                                        )
                                         NSGCellTableOptimized(data)
                                     }
                                 }
@@ -981,15 +1003,153 @@ fun UtilesScreen(
                 }
             }
         }
+        
+        // Diálogo para editar nombre de eNB
+        if (showEnbNameDialog) {
+            AlertDialog(
+                onDismissRequest = {
+                    showEnbNameDialog = false
+                    enbNameInput = ""
+                },
+                title = null,
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Badge del eNB
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        ) {
+                            Text(
+                                text = "eNB $currentEnbId",
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                        
+                        Text(
+                            text = "Nombre personalizado",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        
+                        OutlinedTextField(
+                            value = enbNameInput,
+                            onValueChange = { enbNameInput = it },
+                            placeholder = { 
+                                Text(
+                                    "Ej: Casa, Oficina...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                ) 
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                            leadingIcon = {
+                                val currentName = EnbNameManager.getEnbName(context, currentEnbId)
+                                if (currentName != null) {
+                                    IconButton(
+                                        onClick = {
+                                            EnbNameManager.removeEnbName(context, currentEnbId)
+                                            enbNameInput = ""
+                                            enbNameUpdateTrigger++ // Forzar actualización del nombre del eNB
+                                            updateTrigger.value++ // Forzar actualización general de la UI
+                                            showEnbNameDialog = false
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Eliminar nombre",
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            },
+                            trailingIcon = {
+                                if (enbNameInput.isNotBlank()) {
+                                    IconButton(
+                                        onClick = {
+                                            enbNameInput = ""
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Clear,
+                                            contentDescription = "Limpiar texto",
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            }
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (enbNameInput.isNotBlank()) {
+                                EnbNameManager.saveEnbName(context, currentEnbId, enbNameInput.trim())
+                                enbNameUpdateTrigger++ // Forzar actualización del nombre del eNB
+                                updateTrigger.value++ // Forzar actualización general de la UI
+                            }
+                            showEnbNameDialog = false
+                            enbNameInput = ""
+                        },
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Text(
+                            "Guardar",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showEnbNameDialog = false
+                            enbNameInput = ""
+                        }
+                    ) {
+                        Text(
+                            "Cancelar",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                modifier = Modifier.padding(16.dp)
+            )
+        }
     }
 }
 
 
 
 @Composable
-internal fun NSGMainPanelOptimized(data: Triple<String, String, List<CellRow>>) {
+internal fun NSGMainPanelOptimized(
+    data: Triple<String, String, List<CellRow>>,
+    onEnbClick: (String) -> Unit = {},
+    enbNameUpdateTrigger: Int = 0
+) {
     val (tech, badgeText, rows) = data
     val mainCell = rows.firstOrNull { it.isPrimary } ?: return
+    val context = LocalContext.current
+    
+    // Obtener el nombre personalizado del eNB si existe
+    val enbId = mainCell.eNB
+    val customEnbName = remember(enbId, enbNameUpdateTrigger) {
+        if (enbId != null && enbId != "-") {
+            EnbNameManager.getEnbName(context, enbId)
+        } else null
+    }
+    val displayName = customEnbName ?: "Celda Principal"
 
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
@@ -1039,7 +1199,7 @@ internal fun NSGMainPanelOptimized(data: Triple<String, String, List<CellRow>>) 
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Celda Principal",
+                            text = displayName,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1072,17 +1232,23 @@ internal fun NSGMainPanelOptimized(data: Triple<String, String, List<CellRow>>) 
 
                     Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                         Row(modifier = Modifier.fillMaxWidth()) {
-                            NSGParameterItem("eNB", eNB, Modifier.weight(1f))
+                            NSGParameterItem(
+                                "eNB", 
+                                eNB, 
+                                Modifier.weight(1f),
+                                isEnbClickable = true,
+                                onEnbClick = { onEnbClick(eNB) }
+                            )
                             NSGParameterItem("Banda", mainCell.band, Modifier.weight(1.2f), horizontalAlignment = Alignment.CenterHorizontally)
                             NSGParameterItem("Frecuencia", getLteFrequency(mainCell.earfcn.toIntOrNull() ?: 0), Modifier.weight(1f), horizontalAlignment = Alignment.End)
                         }
                         Row(modifier = Modifier.fillMaxWidth()) {
-                            NSGParameterItem("PCI", mainCell.pci, Modifier.weight(1f))
+                            NSGParameterItem("PCI", mainCell.pci, Modifier.weight(1f), horizontalAlignment = Alignment.Start)
                             NSGParameterItem("TAC", mainCell.tac ?: "-", Modifier.weight(1.2f), horizontalAlignment = Alignment.CenterHorizontally)
                             NSGParameterItem("TA", mainCell.ta ?: "-", Modifier.weight(1f), horizontalAlignment = Alignment.End)
                         }
                         Row(modifier = Modifier.fillMaxWidth()) {
-                            NSGParameterItem("CI", ciValue, Modifier.weight(1f))
+                            NSGParameterItem("CI", ciValue, Modifier.weight(1f), horizontalAlignment = Alignment.Start)
                         }
 
                         // Ancho de Banda (Estilo Pro) - Debajo de TA
@@ -1239,7 +1405,9 @@ fun NSGParameterItem(
     label: String, 
     value: String, 
     modifier: Modifier = Modifier,
-    horizontalAlignment: Alignment.Horizontal = Alignment.Start
+    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
+    isEnbClickable: Boolean = false,
+    onEnbClick: () -> Unit = {}
 ) {
     Column(
         modifier = modifier,
@@ -1250,12 +1418,28 @@ fun NSGParameterItem(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
         )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        if (isEnbClickable) {
+            Text(
+                text = value,
+                modifier = Modifier
+                    .background(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                    .clickable { onEnbClick() },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        } else {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
     }
 }
 
@@ -1531,9 +1715,15 @@ fun PlanesSection(
 ) {
     val callPhonePermission = Manifest.permission.CALL_PHONE
     val hasCallPermission = ContextCompat.checkSelfPermission(context, callPhonePermission) == PackageManager.PERMISSION_GRANTED
+    var pendingUssd by remember { mutableStateOf<String?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         if (isGranted) {
-            // No se ejecuta nada aquí, la acción se maneja en el botón
+            pendingUssd?.let { ussd ->
+                makeUssdCall(context, ussd, selectedSubscription)
+                pendingUssd = null
+            }
+        } else {
+            pendingUssd = null
         }
     }
 
@@ -1703,6 +1893,7 @@ fun PlanesSection(
                                 // Botón de precio
                                 Button(
                                     onClick = {
+                                        VibrationManager.vibrate(context)
                                         if (plan.ussd.startsWith("sms:")) {
                                             try {
                                                 val parts = plan.ussd.removePrefix("sms:").split(":")
@@ -1721,6 +1912,7 @@ fun PlanesSection(
                                             if (ContextCompat.checkSelfPermission(context, callPhonePermission) == PackageManager.PERMISSION_GRANTED) {
                                                 makeUssdCall(context, plan.ussd, selectedSubscription)
                                             } else {
+                                                pendingUssd = plan.ussd
                                                 permissionLauncher.launch(callPhonePermission)
                                             }
                                         }
@@ -1777,6 +1969,7 @@ fun CategoryCard(
     color: Color,
     onClick: () -> Unit
 ) {
+    val context = LocalContext.current
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
@@ -1802,7 +1995,10 @@ fun CategoryCard(
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
-                onClick = onClick
+                onClick = {
+                     VibrationManager.vibrate(context)
+                     onClick()
+                }
             )
     ) {
         Row(
@@ -1846,7 +2042,17 @@ fun CategoryCard(
 @Composable
 fun ConsultaSection(context: Context, selectedSubscription: SubscriptionInfo?) {
     val callPhonePermission = Manifest.permission.CALL_PHONE
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    var pendingUssd by remember { mutableStateOf<String?>(null) }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+        if (isGranted) {
+            pendingUssd?.let { ussd ->
+                makeUssdCall(context, ussd, selectedSubscription)
+                pendingUssd = null
+            }
+        } else {
+            pendingUssd = null
+        }
+    }
     val consultas = listOf(
         ConsultaItem("Saldo", "*222#", "Consultar", Icons.Default.AccountBalanceWallet),
         ConsultaItem("Datos", "*222*328#", "Consultar", Icons.Default.DataUsage),
@@ -1928,9 +2134,11 @@ fun ConsultaSection(context: Context, selectedSubscription: SubscriptionInfo?) {
                         // Botón mejorado
                         Button(
                             onClick = {
+                                VibrationManager.vibrate(context)
                                 if (ContextCompat.checkSelfPermission(context, callPhonePermission) == PackageManager.PERMISSION_GRANTED) {
                                     makeUssdCall(context, consulta.ussd, selectedSubscription)
                                 } else {
+                                    pendingUssd = consulta.ussd
                                     permissionLauncher.launch(callPhonePermission)
                                 }
                             },
@@ -1975,12 +2183,19 @@ fun TransferenciaSection(selectedSubscription: SubscriptionInfo?) {
         contract = ActivityResultContracts.RequestPermission()
     ) { }
 
+    var pendingUssd by remember { mutableStateOf<String?>(null) }
+
     // Launcher para solicitar permiso de llamada
     val permissionCallLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            // Nada más aquí; la llamada se intentará en el siguiente clic
+            pendingUssd?.let { ussd ->
+                makeUssdCall(context, ussd, selectedSubscription)
+                pendingUssd = null
+            }
+        } else {
+            pendingUssd = null
         }
     }
 
@@ -2059,6 +2274,7 @@ fun TransferenciaSection(selectedSubscription: SubscriptionInfo?) {
                 trailingIcon = {
                     IconButton(
                         onClick = {
+                            VibrationManager.vibrate(context)
                             val intent = Intent(Intent.ACTION_PICK).apply {
                                 type = ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE
                             }
@@ -2144,6 +2360,7 @@ fun TransferenciaSection(selectedSubscription: SubscriptionInfo?) {
             // Botón Transferir con degradado o estilo premium
             Button(
                 onClick = {
+                    VibrationManager.vibrate(context)
                     numeroError = destinatario.isBlank() || destinatario.length < 8
                     pinError = contraseña.isBlank()
                     montoError = monto.isBlank()
@@ -2155,6 +2372,7 @@ fun TransferenciaSection(selectedSubscription: SubscriptionInfo?) {
                     ) {
                         makeUssdCall(context, ussd, selectedSubscription)
                     } else {
+                        pendingUssd = ussd
                         permissionCallLauncher.launch(Manifest.permission.CALL_PHONE)
                     }
                 },
@@ -2499,26 +2717,61 @@ private fun getCellRows(
                 val ciInt = if (ci.ci != Int.MAX_VALUE) ci.ci else null
                 val eNB = ciInt?.let { v -> String.format("%d", v / 256) } ?: "-"
 
-                // SNR
+                // SNR Extraction Logic - Enhanced for Xiaomi & Custom ROMs
                 var snrRaw = if (ss.rssnr != Int.MAX_VALUE) ss.rssnr else null
+
+                // Fallback 1: Reflection methods (getSnr, getLteSnr)
                 if (snrRaw == null) {
                     try {
                         val method = try {
                             ss.javaClass.getMethod("getSnr")
                         } catch (e: Exception) {
-                            ss.javaClass.getMethod("getLteSnr")
+                            try {
+                                ss.javaClass.getMethod("getLteSnr")
+                            } catch (e2: Exception) {
+                                null
+                            }
                         }
-                        val v = method.invoke(ss) as Int
-                        if (v != Int.MAX_VALUE) snrRaw = v
-                    } catch (e: Exception) {
-                        val ssStr = ss.toString()
-                        val rssnrStr = if (ssStr.contains("rssnr=")) {
-                            ssStr.substringAfter("rssnr=").substringBefore(" ").substringBefore(",")
-                        } else if (ssStr.contains("snr=")) {
-                            ssStr.substringAfter("snr=").substringBefore(" ").substringBefore(",")
-                        } else null
-                        snrRaw = rssnrStr?.toDoubleOrNull()?.toInt()?.takeIf { it != Int.MAX_VALUE }
-                    }
+                        if (method != null) {
+                            val v = method.invoke(ss) as Int
+                            if (v != Int.MAX_VALUE) snrRaw = v
+                        }
+                    } catch (e: Exception) { }
+                }
+
+                // Fallback 2: Robust String Parsing (Regex)
+                if (snrRaw == null) {
+                    val ssStr = ss.toString()
+                    val snrRegex = "(?:rssnr|snr)[:=]\\s*([+-]?\\d+)".toRegex(RegexOption.IGNORE_CASE)
+                    snrRaw = snrRegex.find(ssStr)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it != Int.MAX_VALUE }
+                }
+
+                // Fallback 3: Global Signal Strength (Critical for some Xiaomi/Custom ROMs)
+                // Sometimes CellInfo is not fully populated but the global SignalStrength object is.
+                if (snrRaw == null && it.isRegistered && signalStrength != null) {
+                    try {
+                        // Try to find matching LTE component in global signal
+                        val globalLte = signalStrength.getCellSignalStrengths(CellSignalStrengthLte::class.java).firstOrNull()
+                        
+                        if (globalLte != null) {
+                            if (globalLte.rssnr != Int.MAX_VALUE) {
+                                snrRaw = globalLte.rssnr
+                            } else {
+                                // Try parsing the string of the global component
+                                val globalStr = globalLte.toString()
+                                val snrRegex = "(?:rssnr|snr)[:=]\\s*([+-]?\\d+)".toRegex(RegexOption.IGNORE_CASE)
+                                snrRaw = snrRegex.find(globalStr)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it != Int.MAX_VALUE }
+                            }
+                        }
+                        
+                        // Last resort: Search in the raw string of the entire SignalStrength object
+                        if (snrRaw == null) {
+                             val fullStr = signalStrength.toString()
+                             val snrRegex = "(?:rssnr|snr)[:=]\\s*([+-]?\\d+)".toRegex(RegexOption.IGNORE_CASE)
+                             // We take the first match as it usually corresponds to the primary serving cell
+                             snrRaw = snrRegex.find(fullStr)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it != Int.MAX_VALUE }
+                        }
+                    } catch(e: Exception) { }
                 }
 
                 if (snrRaw != null && snrRaw > 100 && snrRaw != Int.MAX_VALUE) {
