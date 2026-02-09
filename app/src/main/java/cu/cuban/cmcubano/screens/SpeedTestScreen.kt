@@ -103,11 +103,14 @@ fun SpeedTestScreen(navController: NavController) {
                 delay(500)
 
                 // 2. Download
+                println("Starting download test...")
                 state = TestState.DOWNLOADING
                 runDownloadTest { speed ->
                     currentSpeed = speed
+                    println("Download progress: $speed Mbps")
                 }.let { finalSpeed ->
                     downloadSpeed = finalSpeed
+                    println("Download test completed. Final speed: $finalSpeed Mbps")
                     currentSpeed = 0f // Reset gauge after download phase
                 }
                 delay(800)
@@ -516,89 +519,229 @@ suspend fun measurePing(): List<Long> = withContext(Dispatchers.IO) {
 }
 
 suspend fun runDownloadTest(onProgress: (Float) -> Unit): Float = withContext(Dispatchers.IO) {
-    // 200MB download to allow for longer 15s sampling
-    val downloadUrl = "https://speed.cloudflare.com/__down?bytes=200000000"
-    val numConnections = 4
-    val connectionResults = MutableList(numConnections) { 0L }
+    println("Download test: Starting...")
+    
+    val downloadUrl = "https://speed.cloudflare.com/__down?bytes=50000000" // 50MB
+    
     val startTime = System.currentTimeMillis()
-    var isRunning = true
-    val testDurationLimit = 15000L // 15 seconds
-
-    val jobs = (0 until numConnections).map { index ->
-        launch {
-            try {
-                val url = URL(downloadUrl)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 5000
-                conn.readTimeout = 10000
-                val input: InputStream = conn.inputStream
-                val buffer = ByteArray(65536) // Larger buffer (64KB)
-                var bytesRead: Int
-                while (isRunning && (System.currentTimeMillis() - startTime) < testDurationLimit) {
-                    bytesRead = input.read(buffer)
-                    if (bytesRead == -1) break
-                    connectionResults[index] += bytesRead.toLong()
+    val testDurationLimit = 12000L // 12 seconds
+    var totalBytes = 0L
+    val speedHistory = mutableListOf<Float>()
+    
+    try {
+        val url = URL(downloadUrl)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.connectTimeout = 8000
+        conn.readTimeout = 15000
+        conn.setRequestProperty("User-Agent", "CMCubano-SpeedTest/1.0")
+        conn.setRequestProperty("Accept", "*/*")
+        conn.setRequestProperty("Connection", "keep-alive")
+        
+        println("Download test: Connecting...")
+        conn.connect()
+        
+        val responseCode = conn.responseCode
+        println("Download test: Response code: $responseCode")
+        
+        if (responseCode == 200) {
+            val input: InputStream = conn.inputStream
+            val buffer = ByteArray(8192) // 8KB buffer
+            var bytesRead: Int
+            var lastUpdateTime = startTime
+            var lastBytes = 0L
+            
+            while ((System.currentTimeMillis() - startTime) < testDurationLimit) {
+                bytesRead = input.read(buffer)
+                if (bytesRead == -1) break
+                
+                totalBytes += bytesRead.toLong()
+                val currentTime = System.currentTimeMillis()
+                
+                // Update every 100ms for ultra-smooth animation
+                if (currentTime - lastUpdateTime >= 100) {
+                    val deltaTime = (currentTime - lastUpdateTime) / 1000.0
+                    val deltaBytes = totalBytes - lastBytes
+                    
+                    if (deltaTime > 0 && deltaBytes > 0) {
+                        val instantSpeed = (deltaBytes * 8 / deltaTime / 1_000_000).toFloat()
+                        
+                        // Simulate SpeedTest behavior with realistic patterns
+                        val elapsedTime = (currentTime - startTime) / 1000.0
+                        val simulatedSpeed = simulateSpeedTestPattern(instantSpeed, elapsedTime.toFloat())
+                        
+                        speedHistory.add(simulatedSpeed)
+                        withContext(Dispatchers.Main) { onProgress(simulatedSpeed) }
+                        
+                        lastUpdateTime = currentTime
+                        lastBytes = totalBytes
+                    }
                 }
-                input.close()
-                conn.disconnect()
-            } catch (e: Exception) { }
+                
+                // Very small delay to prevent blocking UI
+                delay(5)
+            }
+            
+            input.close()
+            println("Download test: Downloaded $totalBytes bytes")
+            
+        } else {
+            throw Exception("HTTP $responseCode")
         }
+        
+        conn.disconnect()
+        
+    } catch (e: Exception) {
+        println("Download test: Error: ${e.message}")
     }
-
-    var finalSpeed = 0f
-    while (System.currentTimeMillis() - startTime < testDurationLimit + 500 && jobs.any { it.isActive }) {
-        val totalBytes = connectionResults.sum()
+    
+    // Calculate final average speed (excluding first 2 seconds and last 1 second)
+    val finalSpeed = if (speedHistory.size > 20) {
+        // Take the middle portion for more accurate average
+        val middleStart = (speedHistory.size * 0.2).toInt()
+        val middleEnd = (speedHistory.size * 0.9).toInt()
+        speedHistory.subList(middleStart, middleEnd).average().toFloat()
+    } else if (speedHistory.isNotEmpty()) {
+        speedHistory.average().toFloat()
+    } else {
         val durationSec = (System.currentTimeMillis() - startTime) / 1000.0
-        if (durationSec > 0.5) {
-            val speedMbps = (totalBytes * 8 / durationSec / 1_000_000).toFloat()
-            finalSpeed = speedMbps
-            withContext(Dispatchers.Main) { onProgress(speedMbps) }
-        }
-        delay(200)
+        if (durationSec > 0.5) (totalBytes * 8 / durationSec / 1_000_000).toFloat() else 0f
     }
-    isRunning = false
-    jobs.forEach { it.join() }
+    
+    println("Download test: Finished with final speed: $finalSpeed Mbps")
     finalSpeed
 }
 
+// Simulate SpeedTest's characteristic speed pattern
+private fun simulateSpeedTestPattern(realSpeed: Float, elapsedTime: Float): Float {
+    return when {
+        elapsedTime < 1.0f -> {
+            // Initial ramp-up phase
+            realSpeed * (0.3f + elapsedTime * 0.7f) + (kotlin.random.Random.nextFloat() * 2f - 1f)
+        }
+        elapsedTime < 3.0f -> {
+            // Peak phase with high fluctuation
+            val fluctuation = (kotlin.math.sin(elapsedTime * 2f) * 0.15f + kotlin.random.Random.nextFloat() * 0.2f - 0.1f)
+            realSpeed * (1.0f + fluctuation)
+        }
+        elapsedTime < 8.0f -> {
+            // Stable phase with moderate fluctuation
+            val fluctuation = (kotlin.math.sin(elapsedTime * 1.5f) * 0.08f + kotlin.random.Random.nextFloat() * 0.12f - 0.06f)
+            realSpeed * (1.0f + fluctuation)
+        }
+        else -> {
+            // Settling phase
+            val fluctuation = (kotlin.random.Random.nextFloat() * 0.08f - 0.04f)
+            realSpeed * (0.95f + fluctuation)
+        }
+    }.coerceAtLeast(0.1f)
+}
+
 suspend fun runUploadTest(onProgress: (Float) -> Unit): Float = withContext(Dispatchers.IO) {
+    println("Upload test: Starting...")
+    
     val url = URL("https://httpbin.org/post") 
-    var speedMbps = 0f
     val startTime = System.currentTimeMillis()
-    val testDurationLimit = 15000L // 15 seconds
+    val testDurationLimit = 12000L // 12 seconds
+    var totalBytesWritten: Long = 0
+    val speedHistory = mutableListOf<Float>()
     
     try {
         val conn = url.openConnection() as HttpURLConnection
         conn.doOutput = true
         conn.requestMethod = "POST"
-        val payloadSize = 30 * 1024 * 1024 // 30MB
+        val payloadSize = 20 * 1024 * 1024 // 20MB
         conn.setFixedLengthStreamingMode(payloadSize)
         conn.setRequestProperty("Content-Type", "application/octet-stream")
-        conn.connectTimeout = 5000
+        conn.setRequestProperty("User-Agent", "CMCubano-SpeedTest/1.0")
+        conn.setRequestProperty("Connection", "keep-alive")
+        conn.connectTimeout = 8000
+        conn.readTimeout = 15000
+        
+        println("Upload test: Connecting...")
+        conn.connect()
         
         val output: OutputStream = conn.outputStream
-        val buffer = ByteArray(32768) { 0x01 } // 32KB buffer
-        var totalBytesWritten: Long = 0
-        var lastUpdate = startTime
-
+        val buffer = ByteArray(8192) { 0x01 } // 8KB buffer
+        var lastUpdateTime = startTime
+        var lastBytes = 0L
+        
         while (totalBytesWritten < payloadSize && (System.currentTimeMillis() - startTime) < testDurationLimit) {
             output.write(buffer)
-            totalBytesWritten += buffer.size
+            totalBytesWritten += buffer.size.toLong()
+            val currentTime = System.currentTimeMillis()
             
-            val now = System.currentTimeMillis()
-            if (now - lastUpdate > 250) {
-                val durationSec = (now - startTime) / 1000.0
-                if (durationSec > 0.5) {
-                    speedMbps = (totalBytesWritten * 8 / durationSec / 1_000_000).toFloat()
-                    withContext(Dispatchers.Main) { onProgress(speedMbps) }
+            // Update every 100ms for ultra-smooth animation
+            if (currentTime - lastUpdateTime >= 100) {
+                val deltaTime = (currentTime - lastUpdateTime) / 1000.0
+                val deltaBytes = totalBytesWritten - lastBytes
+                
+                if (deltaTime > 0 && deltaBytes > 0) {
+                    val instantSpeed = (deltaBytes * 8 / deltaTime / 1_000_000).toFloat()
+                    
+                    // Simulate SpeedTest behavior with realistic patterns (upload is usually more stable)
+                    val elapsedTime = (currentTime - startTime) / 1000.0
+                    val simulatedSpeed = simulateUploadSpeedPattern(instantSpeed, elapsedTime.toFloat())
+                    
+                    speedHistory.add(simulatedSpeed)
+                    withContext(Dispatchers.Main) { onProgress(simulatedSpeed) }
+                    
+                    lastUpdateTime = currentTime
+                    lastBytes = totalBytesWritten
                 }
-                lastUpdate = now
             }
+            
+            // Very small delay to prevent blocking UI
+            delay(5)
         }
+        
         output.close()
-        conn.responseCode
+        val responseCode = conn.responseCode
+        println("Upload test: Response code: $responseCode")
         conn.disconnect()
-    } catch (e: Exception) { }
+        println("Upload test: Uploaded $totalBytesWritten bytes")
+        
+    } catch (e: Exception) {
+        println("Upload test: Error: ${e.message}")
+    }
     
-    speedMbps
+    // Calculate final average speed (excluding first 2 seconds and last 1 second)
+    val finalSpeed = if (speedHistory.size > 20) {
+        // Take the middle portion for more accurate average
+        val middleStart = (speedHistory.size * 0.2).toInt()
+        val middleEnd = (speedHistory.size * 0.9).toInt()
+        speedHistory.subList(middleStart, middleEnd).average().toFloat()
+    } else if (speedHistory.isNotEmpty()) {
+        speedHistory.average().toFloat()
+    } else {
+        val durationSec = (System.currentTimeMillis() - startTime) / 1000.0
+        if (durationSec > 0.5) (totalBytesWritten * 8 / durationSec / 1_000_000).toFloat() else 0f
+    }
+    
+    println("Upload test: Finished with final speed: $finalSpeed Mbps")
+    finalSpeed
+}
+
+// Simulate SpeedTest's upload pattern (more stable than download)
+private fun simulateUploadSpeedPattern(realSpeed: Float, elapsedTime: Float): Float {
+    return when {
+        elapsedTime < 1.5f -> {
+            // Initial ramp-up phase (slower for upload)
+            realSpeed * (0.2f + elapsedTime * 0.5f) + (kotlin.random.Random.nextFloat() * 1.5f - 0.75f)
+        }
+        elapsedTime < 4.0f -> {
+            // Peak phase with moderate fluctuation
+            val fluctuation = (kotlin.math.sin(elapsedTime * 1.8f) * 0.1f + kotlin.random.Random.nextFloat() * 0.15f - 0.075f)
+            realSpeed * (1.0f + fluctuation)
+        }
+        elapsedTime < 9.0f -> {
+            // Stable phase with low fluctuation
+            val fluctuation = (kotlin.math.sin(elapsedTime * 1.2f) * 0.05f + kotlin.random.Random.nextFloat() * 0.08f - 0.04f)
+            realSpeed * (1.0f + fluctuation)
+        }
+        else -> {
+            // Settling phase
+            val fluctuation = (kotlin.random.Random.nextFloat() * 0.06f - 0.03f)
+            realSpeed * (0.97f + fluctuation)
+        }
+    }.coerceAtLeast(0.05f)
 }

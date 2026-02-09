@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -23,6 +24,10 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.border
+import android.content.Context
+import kotlinx.coroutines.delay
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import cu.cuban.cmcubano.utils.PremiumManager
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,21 +59,35 @@ fun InicioScreen(navController: NavController) {
             "datos"
         ),
         CarouselItem(
+            "Control de tus datos",
+            Icons.Default.Storage,
+            Color(0xFF3F51B5),
+            "control_datos"
+        ),
+        CarouselItem(
             "Ver un mapa de las Radio Bases",
             Icons.Default.Map,
             Color(0xFF9C27B0),
             "mapa"
-        ),
-        CarouselItem(
-            "Ajustes de la aplicación",
-            Icons.Default.Settings,
-            Color(0xFF607D8B),
-            "mas"
         )
     )
 
     val context = LocalContext.current
     val isPremium = remember { PremiumManager.isPremium(context) }
+    
+    // Estado para el bloqueo de Control de Datos
+    val trialPrefs = remember { context.getSharedPreferences("trial_prefs", Context.MODE_PRIVATE) }
+    val trialUsed = trialPrefs.getBoolean("control_datos_trial_used", false)
+    val trialEndTime = trialPrefs.getLong("control_datos_trial_end_time", 0L)
+    val isTrialExpired = trialUsed && System.currentTimeMillis() >= trialEndTime
+    var isControlDatosLockedTapped by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isControlDatosLockedTapped) {
+        if (isControlDatosLockedTapped) {
+            delay(3000)
+            isControlDatosLockedTapped = false
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -105,7 +124,7 @@ fun InicioScreen(navController: NavController) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 18.dp),
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -115,6 +134,25 @@ fun InicioScreen(navController: NavController) {
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     textAlign = TextAlign.Center
                 )
+
+                IconButton(
+                    onClick = {
+                        cu.cuban.cmcubano.utils.VibrationManager.vibrate(context)
+                        navController.navigate("mas")
+                    },
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Ajustes",
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         }
 
@@ -140,7 +178,11 @@ fun InicioScreen(navController: NavController) {
                                 .height(160.dp)
                                 .padding(vertical = 6.dp)
                                 .clickable {
-                                    navController.navigate(item.route)
+                                    if (item.route == "control_datos" && !isPremium && isTrialExpired) {
+                                        isControlDatosLockedTapped = true
+                                    } else {
+                                        navController.navigate(item.route)
+                                    }
                                 },
                             shape = RoundedCornerShape(20.dp),
                             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -161,27 +203,56 @@ fun InicioScreen(navController: NavController) {
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.padding(12.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = item.icon,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .padding(bottom = 8.dp),
-                                        tint = item.color
-                                    )
-                                    Text(
-                                        text = item.text,
-                                        style = MaterialTheme.typography.labelLarge.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            lineHeight = 18.sp
-                                        ),
-                                        textAlign = TextAlign.Center,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
+                                AnimatedContent(
+                                    targetState = isControlDatosLockedTapped && item.route == "control_datos",
+                                    transitionSpec = {
+                                        (fadeIn(animationSpec = tween(300)) + scaleIn(initialScale = 0.8f))
+                                            .togetherWith(fadeOut(animationSpec = tween(300)) + scaleOut(targetScale = 0.8f))
+                                    },
+                                    label = "PremiumMessageAnimation"
+                                ) { isLocked ->
+                                    if (isLocked) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier.padding(12.dp)
+                                        ) {
+                                            Text(
+                                                text = "Esta función es premium,",
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "activa tu suscripción en los ajustes.",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    } else {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier.padding(12.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = item.icon,
+                                                contentDescription = null,
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .padding(bottom = 8.dp),
+                                                tint = item.color
+                                            )
+                                            Text(
+                                                text = item.text,
+                                                style = MaterialTheme.typography.labelLarge.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    lineHeight = 18.sp
+                                                ),
+                                                textAlign = TextAlign.Center,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

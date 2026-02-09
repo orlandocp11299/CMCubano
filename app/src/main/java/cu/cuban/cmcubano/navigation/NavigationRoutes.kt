@@ -5,5 +5,6 @@ enum class NavigationRoutes {
     UTILES,
     DATOS,
     MAPA,
-    MAS
+    MAS,
+    CONTROL_DATOS
 } 

@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_premium_widget"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- Section Locked (Premium) -->
+    <TextView
+        android:id="@+id/tv_premium_lock"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:text="FUNCIÓN PREMIUM"
+        android:textColor="#FFFFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <!-- Configuration Mode (Need to setup plan) -->
+    <LinearLayout
+        android:id="@+id/layout_not_configured"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CONFIGURA UN PLAN"
+            android:textColor="#FFFFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Toca aquí para configurar"
+            android:textColor="#FFD1D1D1"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- Main Content Container (Data Plan Card) -->
+    <LinearLayout
+        android:id="@+id/widget_content_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentStart="true"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/tv_plan_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Plan de Datos"
+                    android:textColor="#2196F3"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/tv_plan_limit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Cuota total: 0 GB"
+                    android:textColor="#FFD1D1D1"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:gravity="end"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/tv_plan_consumed"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0.000 GB"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Consumidos"
+                    android:textColor="#FFD1D1D1"
+                    android:textSize="10sp" />
+            </LinearLayout>
+        </RelativeLayout>
+
+        <!-- Progress Bars (Multi-layered for color switching) -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="12dp"
+            android:layout_marginTop="16dp">
+
+            <ProgressBar
+                android:id="@+id/progress_blue"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:indeterminate="false"
+                android:progress="0"
+                android:max="100"
+                android:progressDrawable="@drawable/bg_progress_custom"
+                android:visibility="visible" />
+
+            <ProgressBar
+                android:id="@+id/progress_orange"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:indeterminate="false"
+                android:progress="0"
+                android:max="100"
+                android:progressDrawable="@drawable/bg_progress_orange"
+                android:visibility="gone" />
+
+            <ProgressBar
+                android:id="@+id/progress_red"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:indeterminate="false"
+                android:progress="0"
+                android:max="100"
+                android:progressDrawable="@drawable/bg_progress_red"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:id="@+id/tv_plan_remaining"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="Restante: 0 MB"
+                android:textColor="#FFFFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/tv_plan_percent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0%"
+                android:textColor="#FFFFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Footer with Update Button -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_marginTop="8dp">
+
+            <FrameLayout
+                android:id="@+id/btn_widget_refresh"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_btn_update"
+                android:paddingHorizontal="24dp">
+                <TextView
+                    android:id="@+id/tv_update_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:text="ACTUALIZAR"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+                
+                <ProgressBar
+                    android:id="@+id/progress_refresh"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_gravity="center"
+                    android:indeterminateTint="#FFFFFFFF"
+                    android:visibility="gone" />
+            </FrameLayout>
+
+            <TextView
+                android:id="@+id/tv_widget_last_update"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Última act: --:--"
+                android:textColor="#FFD1D1D1"
+                android:textSize="10sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>
