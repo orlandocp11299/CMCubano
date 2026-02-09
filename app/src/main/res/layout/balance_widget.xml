@@ -5,13 +5,13 @@
     android:layout_height="match_parent"
     android:background="@drawable/bg_premium_widget"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="12dp">
 
     <!-- Header -->
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp">
+        android:layout_marginBottom="8dp">
 
         <TextView
             android:id="@+id/widget_title"
@@ -19,14 +19,16 @@
             android:layout_height="wrap_content"
             android:text="Mi Saldo"
             android:textColor="@color/white"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_centerVertical="true" />
 
         <LinearLayout
             android:id="@+id/sim_selector_container"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
             android:orientation="horizontal"
             android:background="@drawable/bg_sim_selector_outline"
             android:padding="2dp">
@@ -197,7 +199,7 @@
             android:id="@+id/btn_update"
             android:layout_width="wrap_content"
             android:layout_height="40dp"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="4dp"
             android:background="@drawable/bg_btn_update"
             android:paddingHorizontal="24dp">
 

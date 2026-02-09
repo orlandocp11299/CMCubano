@@ -1,10 +1,13 @@
 package cu.cuban.cmcubano
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.content.Context
+import cu.cuban.cmcubano.DataPlanWidgetProvider
+import cu.cuban.cmcubano.DataUsageWidgetProvider
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -78,14 +81,52 @@ class MainActivity : ComponentActivity() {
         // Solicitar permisos necesarios (Movido a LaunchedEffect en setContent para no bloquear el diálogo de bienvenida)
         // requestRequiredPermissions()
         
+        // Verificar si se debe iniciar el monitor de red
+        val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("monitor_network_notification", false)) {
+            val netIntent = android.content.Intent(this, cu.cuban.cmcubano.NotificationService::class.java).apply {
+                action = cu.cuban.cmcubano.NotificationService.ACTION_START_MONITOR
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(netIntent)
+            } else {
+                startService(netIntent)
+            }
+        }
+
+        // Verificar si se debe iniciar el monitor de datos
+        val dataPrefs = getSharedPreferences("control_datos_prefs", Context.MODE_PRIVATE)
+        if (dataPrefs.getBoolean("data_usage_live_notification", false)) {
+            val dataIntent = android.content.Intent(this, cu.cuban.cmcubano.NotificationService::class.java).apply {
+                action = cu.cuban.cmcubano.NotificationService.ACTION_START_DATA_MONITOR
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(dataIntent)
+            } else {
+                startService(dataIntent)
+            }
+        }
+        
+        // Determinar destino inicial
+        val navigateTo = intent?.getStringExtra("navigate_to")
+        val startDest = when (navigateTo) {
+            "utiles_screen" -> "red_info"
+            "control_datos" -> "control_datos"
+            "control_datos_settings" -> "control_datos_settings"
+            else -> "inicio"
+        }
+
         setContent {
             val context = LocalContext.current
-            val prefs = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) }
-            var amoledPref by remember { mutableStateOf(prefs.getBoolean("amoled_dark", false)) }
+            // val prefs = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) } // Ya obtenido arriba, pero needed for composable scope if reactive? 
+            // Better to re-get or just use the one we have? standard practice is re-remember inside composable.
+            val prefsState = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) }
+            
+            var themeMode by remember { mutableStateOf(prefsState.getInt("theme_mode", 0)) }
             
             // Estado para el mensaje de bienvenida
             var showWelcome by rememberSaveable { 
-                mutableStateOf<Boolean>(prefs.getBoolean("show_welcome_screen", true)) 
+                mutableStateOf(prefsState.getBoolean("show_welcome_screen", true)) 
             }
 
             // Efecto para solicitar permisos solo después del mensaje de bienvenida
@@ -95,28 +136,33 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            DisposableEffect(prefs) {
+            DisposableEffect(prefsState) {
                 val listener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
-                    if (key == "amoled_dark") {
-                        amoledPref = sharedPreferences.getBoolean("amoled_dark", false)
+                    if (key == "theme_mode") {
+                        themeMode = sharedPreferences.getInt("theme_mode", 0)
                     }
                 }
-                prefs.registerOnSharedPreferenceChangeListener(listener)
-                onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+                prefsState.registerOnSharedPreferenceChangeListener(listener)
+                onDispose { prefsState.unregisterOnSharedPreferenceChangeListener(listener) }
             }
 
-            CMCubanoTheme(amoledDark = isSystemInDarkTheme() && amoledPref) {
+            val isSystemDark = isSystemInDarkTheme()
+            val useDarkTheme = when(themeMode) {
+                1 -> false
+                2 -> true
+                else -> isSystemDark
+            }
+            CMCubanoTheme(darkTheme = useDarkTheme) {
                 val view = LocalView.current
-                val isDark = isSystemInDarkTheme()
                 val systemBarColor = MaterialTheme.colorScheme.background
 
-                DisposableEffect(isDark) {
+                DisposableEffect(useDarkTheme) {
                     window.statusBarColor = systemBarColor.toArgb()
                     window.navigationBarColor = systemBarColor.toArgb()
                     
                     val windowInsetsController = WindowCompat.getInsetsController(window, view)
-                    windowInsetsController?.isAppearanceLightStatusBars = !isDark
-                    windowInsetsController?.isAppearanceLightNavigationBars = !isDark
+                    windowInsetsController?.isAppearanceLightStatusBars = !useDarkTheme
+                    windowInsetsController?.isAppearanceLightNavigationBars = !useDarkTheme
                     
                     onDispose {}
                 }
@@ -130,7 +176,7 @@ class MainActivity : ComponentActivity() {
                             .fillMaxSize()
                             .systemBarsPadding()
                     ) {
-                        MainScreen()
+                        MainScreen(startDestination = startDest)
 
                         if (showWelcome) {
                             WelcomeDialog(
@@ -138,13 +184,31 @@ class MainActivity : ComponentActivity() {
                                     showWelcome = false
                                 },
                                 onDisableWelcome = {
-                                    prefs.edit().putBoolean("show_welcome_screen", false).apply()
+                                    prefsState.edit().putBoolean("show_welcome_screen", false).apply()
                                 }
                             )
                         }
                     }
                 }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Actualizar widgets al entrar en la app
+        try {
+            val refreshPlan = Intent(this, DataPlanWidgetProvider::class.java).apply {
+                action = "cu.cuban.cmcubano.DATA_PLAN_REFRESH"
+            }
+            sendBroadcast(refreshPlan)
+
+            val refreshUsage = Intent(this, DataUsageWidgetProvider::class.java).apply {
+                action = "cu.cuban.cmcubano.DATA_USAGE_REFRESH"
+            }
+            sendBroadcast(refreshUsage)
+        } catch (e: Exception) {
+            // Ignorar errores al refrescar widgets
         }
     }
     
@@ -157,7 +221,8 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.RECEIVE_SMS,
             Manifest.permission.READ_SMS,
             Manifest.permission.SEND_SMS,
-            Manifest.permission.CALL_PHONE
+            Manifest.permission.CALL_PHONE,
+            Manifest.permission.PACKAGE_USAGE_STATS
         )
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -176,7 +241,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen() {
+fun MainScreen(startDestination: String = "inicio") {
     val navController = rememberNavController()
     
     Scaffold(
@@ -184,7 +249,7 @@ fun MainScreen() {
     ) { paddingValues ->
         NavHost(
             navController = navController,
-            startDestination = "inicio",
+            startDestination = startDestination,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues),
@@ -242,7 +307,10 @@ fun MainScreen() {
             composable("datos") { DatosScreen(navController) }
             composable("mapa") { MapaScreen(navController) }
             composable("mas") { AjustesScreen(navController) }
+            composable("configuracion_app") { AppSettingsScreen(navController) }
             composable("speedtest") { SpeedTestScreen(navController) }
+            composable("control_datos") { ControlDatosScreen(navController) }
+            composable("control_datos_settings") { ControlDatosSettingsScreen(navController) }
 
         }
     }

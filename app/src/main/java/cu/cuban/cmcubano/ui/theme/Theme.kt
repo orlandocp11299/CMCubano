@@ -28,7 +28,6 @@ private val LightColorScheme = lightColorScheme(
 fun CMCubanoTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
-    amoledDark: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val baseColorScheme = when {
@@ -41,7 +40,7 @@ fun CMCubanoTheme(
     }
 
     val colorScheme = when {
-        darkTheme && amoledDark -> {
+        darkTheme -> {
             baseColorScheme.copy(
                 background = Color.Black,
                 surface = Color(0xFF121212),
@@ -51,19 +50,6 @@ fun CMCubanoTheme(
                 surfaceContainer = Color(0xFF161616),
                 surfaceContainerHigh = Color(0xFF1C1C1C),
                 surfaceContainerHighest = Color(0xFF222222)
-            )
-        }
-
-        darkTheme -> {
-            baseColorScheme.copy(
-                background = Color(0xFF0F0F0F),
-                surface = Color(0xFF1A1A1A),
-                surfaceVariant = Color(0xFF242424),
-                surfaceContainerLowest = Color(0xFF141414),
-                surfaceContainerLow = Color(0xFF1A1A1A),
-                surfaceContainer = Color(0xFF202020),
-                surfaceContainerHigh = Color(0xFF262626),
-                surfaceContainerHighest = Color(0xFF2C2C2C)
             )
         }
 

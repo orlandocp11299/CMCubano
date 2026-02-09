@@ -32,6 +32,32 @@ class BootReceiver : BroadcastReceiver() {
                 // 2. Reprogramar la alarma para los siguientes días
                 NotificationScheduler.scheduleDailyCheck(context)
             }
+
+            // Iniciar Monitor de Red si está activo
+            val appPrefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            if (appPrefs.getBoolean("monitor_network_notification", false)) {
+                val netIntent = Intent(context, NotificationService::class.java).apply {
+                    this.action = NotificationService.ACTION_START_MONITOR
+                }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(netIntent)
+                } else {
+                    context.startService(netIntent)
+                }
+            }
+
+            // Iniciar Monitor de Datos si está activo
+            val dataPrefs = context.getSharedPreferences("control_datos_prefs", Context.MODE_PRIVATE)
+            if (dataPrefs.getBoolean("data_usage_live_notification", false)) {
+                val dataIntent = Intent(context, NotificationService::class.java).apply {
+                    this.action = NotificationService.ACTION_START_DATA_MONITOR
+                }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(dataIntent)
+                } else {
+                    context.startService(dataIntent)
+                }
+            }
         }
     }
     

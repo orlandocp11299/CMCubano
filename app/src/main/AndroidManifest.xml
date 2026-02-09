@@ -21,6 +21,16 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    
+    <!-- Permisos para monitoreo de datos -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" 
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.READ_NETWORK_USAGE_HISTORY" 
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     
     <!-- Permisos de almacenamiento para Android 13 y superior -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
@@ -71,7 +81,14 @@
         <service
             android:name=".NotificationService"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="location" />
+        
+        <service
+            android:name=".utils.DataUsageService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <receiver
             android:name=".BootReceiver"
@@ -98,6 +115,38 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/balance_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".DataUsageWidgetProvider"
+            android:enabled="true"
+            android:exported="true"
+            android:label="Control Datos Widget">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="cu.cuban.cmcubano.DATA_USAGE_REFRESH" />
+                <action android:name="cu.cuban.cmcubano.DATA_USAGE_NEXT" />
+                <action android:name="cu.cuban.cmcubano.DATA_USAGE_PREV" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/data_usage_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".DataPlanWidgetProvider"
+            android:enabled="true"
+            android:exported="true"
+            android:label="Plan de Datos Widget">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="cu.cuban.cmcubano.DATA_PLAN_REFRESH" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/data_plan_widget_info" />
         </receiver>
     </application>
 
