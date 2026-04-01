@@ -56,11 +56,17 @@ import androidx.compose.animation.core.tween
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import cu.cuban.cmcubano.screens.WelcomeDialog
+import cu.cuban.cmcubano.screens.PermissionsDialog
 import cu.cuban.cmcubano.screens.*
 import cu.cuban.cmcubano.ui.theme.CMCubanoTheme
+import cu.cuban.cmcubano.models.AppUpdate
+import cu.cuban.cmcubano.utils.SupabaseManager
+import io.github.jan.supabase.postgrest.from
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
-    
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -107,32 +113,79 @@ class MainActivity : ComponentActivity() {
             }
         }
         
+        // Verificar si se debe iniciar la burbuja flotante
+        if (dataPrefs.getBoolean("floating_bubble_enabled", false)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (android.provider.Settings.canDrawOverlays(this)) {
+                    val bubbleIntent = android.content.Intent(this, cu.cuban.cmcubano.services.FloatingBubbleService::class.java)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(bubbleIntent)
+                    } else {
+                        startService(bubbleIntent)
+                    }
+                }
+            } else {
+                val bubbleIntent = android.content.Intent(this, cu.cuban.cmcubano.services.FloatingBubbleService::class.java)
+                startService(bubbleIntent)
+            }
+        }
+        
         // Determinar destino inicial
         val navigateTo = intent?.getStringExtra("navigate_to")
-        val startDest = when (navigateTo) {
+        val startDest = "inicio" // Siempre iniciar en inicio para mantener pila de navegación
+        val navigateToDest = when (navigateTo) {
             "utiles_screen" -> "red_info"
             "control_datos" -> "control_datos"
             "control_datos_settings" -> "control_datos_settings"
-            else -> "inicio"
+            "firewall" -> "firewall"
+            else -> null
         }
 
         setContent {
             val context = LocalContext.current
-            // val prefs = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) } // Ya obtenido arriba, pero needed for composable scope if reactive? 
+            val activity = remember { this }
+            // val prefs = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) } // Ya obtenido arriba, pero needed for composable scope if reactive?
             // Better to re-get or just use the one we have? standard practice is re-remember inside composable.
             val prefsState = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) }
             
             var themeMode by remember { mutableStateOf(prefsState.getInt("theme_mode", 0)) }
             
             // Estado para el mensaje de bienvenida
-            var showWelcome by rememberSaveable { 
-                mutableStateOf(prefsState.getBoolean("show_welcome_screen", true)) 
+            var showWelcome by rememberSaveable {
+                mutableStateOf(prefsState.getBoolean("show_welcome_screen", true))
             }
 
-            // Efecto para solicitar permisos solo después del mensaje de bienvenida
+            // Estado para el diálogo de permisos (solo se muestra 1 vez)
+            var showPermissions by rememberSaveable {
+                mutableStateOf(prefsState.getBoolean("show_permissions_screen", true))
+            }
+
+            // Estado para actualización
+            var appUpdate by remember { mutableStateOf<AppUpdate?>(null) }
+
+            // Comprobar actualizaciones al iniciar
+            LaunchedEffect(Unit) {
+                try {
+                    val latestUpdate = withContext(Dispatchers.IO) {
+                        SupabaseManager.client.from("app_updates")
+                            .select {
+                                order("version_code", order = io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                                limit(1)
+                            }.decodeSingleOrNull<AppUpdate>()
+                    }
+
+                    if (latestUpdate != null && latestUpdate.versionCode > BuildConfig.VERSION_CODE) {
+                        appUpdate = latestUpdate
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            // Efecto para mostrar el diálogo de permisos después del mensaje de bienvenida
             LaunchedEffect(showWelcome) {
-                if (!showWelcome) {
-                    requestRequiredPermissions()
+                if (!showWelcome && showPermissions) {
+                    // No hacer nada aquí, el diálogo se mostrará en el UI
                 }
             }
 
@@ -176,16 +229,37 @@ class MainActivity : ComponentActivity() {
                             .fillMaxSize()
                             .systemBarsPadding()
                     ) {
-                        MainScreen(startDestination = startDest)
+                        MainScreen(startDestination = startDest, navigateToDest = navigateToDest)
 
                         if (showWelcome) {
                             WelcomeDialog(
-                                onDismissRequest = { 
+                                onDismissRequest = {
                                     showWelcome = false
                                 },
                                 onDisableWelcome = {
                                     prefsState.edit().putBoolean("show_welcome_screen", false).apply()
                                 }
+                            )
+                        }
+
+                        // Diálogo de permisos (solo si no se muestra bienvenida)
+                        if (!showWelcome && showPermissions) {
+                            PermissionsDialog(
+                                onGrantPermissions = {
+                                    // Marcar que ya se mostró el diálogo
+                                    prefsState.edit().putBoolean("show_permissions_screen", false).apply()
+                                    showPermissions = false
+                                    // Solicitar permisos
+                                    requestRequiredPermissions()
+                                }
+                            )
+                        }
+
+                        // Diálogo de actualización
+                        appUpdate?.let { update ->
+                            UpdateDialog(
+                                update = update,
+                                onDismissRequest = { appUpdate = null }
                             )
                         }
                     }
@@ -224,25 +298,35 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.CALL_PHONE,
             Manifest.permission.PACKAGE_USAGE_STATS
         )
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
-        
+
+        // Filtrar permisos que no están concedidos
         val permissionsToRequest = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }.toTypedArray()
-        
+
         if (permissionsToRequest.isNotEmpty()) {
             requestPermissionLauncher.launch(permissionsToRequest)
+        } else {
+            println("Todos los permisos ya están concedidos")
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(startDestination: String = "inicio") {
+fun MainScreen(startDestination: String = "inicio", navigateToDest: String? = null) {
     val navController = rememberNavController()
+
+    // Navegar al destino específico si viene de notificación
+    LaunchedEffect(navigateToDest) {
+        navigateToDest?.let {
+            navController.navigate(it)
+        }
+    }
     
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -279,6 +363,7 @@ fun MainScreen(startDestination: String = "inicio") {
             }
         ) {
             composable("inicio") { InicioScreen(navController) }
+            composable("noticias") { NoticiasScreen(navController) }
             composable("red_info") { UtilesScreen(navController, initialTab = 0, showTabs = false, standaloneTitle = "Información de Red") }
             composable("planes_menu") { PlanesMenuScreen(navController) }
             composable(
@@ -302,15 +387,32 @@ fun MainScreen(startDestination: String = "inicio") {
                 )
             }
             composable("consultas_list") { UtilesScreen(navController, initialTab = 3, showTabs = false, standaloneTitle = "Consultas") }
+            composable("atencion_cliente_list") { AtencionClienteScreen(navController) }
             composable("transferencia_list") { UtilesScreen(navController, initialTab = 4, showTabs = false, standaloneTitle = "Transferencia") }
+            composable("recordatorio_screen") { RecordatorioScreen(navController) }
             composable("utiles") { UtilesScreen(navController) }
             composable("datos") { DatosScreen(navController) }
+            composable(
+                route = "datos_content?section={section}",
+                arguments = listOf(
+                    navArgument("section") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = "conceptos"
+                    }
+                )
+            ) { backStackEntry ->
+                val section = backStackEntry.arguments?.getString("section")
+                DatosContentScreen(navController, section ?: "conceptos")
+            }
             composable("mapa") { MapaScreen(navController) }
             composable("mas") { AjustesScreen(navController) }
             composable("configuracion_app") { AppSettingsScreen(navController) }
             composable("speedtest") { SpeedTestScreen(navController) }
+            composable("speedtest_history") { SpeedTestHistoryScreen(navController) }
             composable("control_datos") { ControlDatosScreen(navController) }
             composable("control_datos_settings") { ControlDatosSettingsScreen(navController) }
+            composable("firewall") { FirewallScreen(navController) }
 
         }
     }

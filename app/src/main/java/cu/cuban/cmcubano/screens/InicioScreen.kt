@@ -1,4 +1,4 @@
-package cu.cuban.cmcubano.screens
+﻿package cu.cuban.cmcubano.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +29,19 @@ import kotlinx.coroutines.delay
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import cu.cuban.cmcubano.utils.PremiumManager
+import cu.cuban.cmcubano.utils.VibrationManager
+import cu.cuban.cmcubano.utils.SupabaseManager
+import cu.cuban.cmcubano.utils.GoldenParticlesBackground
+import cu.cuban.cmcubano.models.AppUpdate
+import cu.cuban.cmcubano.BuildConfig
+import io.github.jan.supabase.postgrest.from
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import cu.cuban.cmcubano.utils.isVpnRunning
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,9 +73,15 @@ fun InicioScreen(navController: NavController) {
         ),
         CarouselItem(
             "Control de tus datos",
-            Icons.Default.Storage,
+            Icons.Default.DataUsage,
             Color(0xFF3F51B5),
             "control_datos"
+        ),
+        CarouselItem(
+            "Cortafuegos",
+            Icons.Default.Shield,
+            Color(0xFF607D8B),
+            "firewall"
         ),
         CarouselItem(
             "Ver un mapa de las Radio Bases",
@@ -74,6 +93,10 @@ fun InicioScreen(navController: NavController) {
 
     val context = LocalContext.current
     val isPremium = remember { PremiumManager.isPremium(context) }
+    var isVpnActive by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        isVpnActive = isVpnRunning(context)
+    }
     
     // Estado para el bloqueo de Control de Datos
     val trialPrefs = remember { context.getSharedPreferences("trial_prefs", Context.MODE_PRIVATE) }
@@ -88,6 +111,10 @@ fun InicioScreen(navController: NavController) {
             isControlDatosLockedTapped = false
         }
     }
+
+
+    
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -124,34 +151,62 @@ fun InicioScreen(navController: NavController) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "CM Cubano",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    textAlign = TextAlign.Center
-                )
+                if (isPremium) {
+                    GoldenParticlesBackground(modifier = Modifier.matchParentSize())
+                }
 
-                IconButton(
-                    onClick = {
-                        cu.cuban.cmcubano.utils.VibrationManager.vibrate(context)
-                        navController.navigate("mas")
-                    },
+                Box(
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f))
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Ajustes",
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(24.dp)
+                    Text(
+                        text = "CM Cubano",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        textAlign = TextAlign.Center
                     )
+
+                    IconButton(
+                        onClick = {
+                            VibrationManager.vibrate(context)
+                            navController.navigate("noticias")
+                        },
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Newspaper,
+                            contentDescription = "Noticias",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            cu.cuban.cmcubano.utils.VibrationManager.vibrate(context)
+                            navController.navigate("mas")
+                        },
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Ajustes",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
         }
@@ -190,19 +245,20 @@ fun InicioScreen(navController: NavController) {
                                 containerColor = MaterialTheme.colorScheme.surface
                             )
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        brush = Brush.verticalGradient(
-                                            colors = listOf(
-                                                item.color.copy(alpha = 0.12f),
-                                                item.color.copy(alpha = 0.03f)
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            brush = Brush.verticalGradient(
+                                                colors = listOf(
+                                                    item.color.copy(alpha = 0.12f),
+                                                    item.color.copy(alpha = 0.03f)
+                                                )
                                             )
-                                        )
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
                                 AnimatedContent(
                                     targetState = isControlDatosLockedTapped && item.route == "control_datos",
                                     transitionSpec = {
@@ -254,6 +310,28 @@ fun InicioScreen(navController: NavController) {
                                         }
                                     }
                                 }
+                                }
+                                // Badge de estado activo para Cortafuegos
+                                if (item.route == "firewall" && isVpnActive) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(10.dp)
+                                            .background(
+                                                color = Color(0xFF34C759),
+                                                shape = RoundedCornerShape(50)
+                                            )
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "Activo",
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -266,6 +344,7 @@ fun InicioScreen(navController: NavController) {
 
         Spacer(modifier = Modifier.height(40.dp))
     }
+
 }
 
 data class CarouselItem(

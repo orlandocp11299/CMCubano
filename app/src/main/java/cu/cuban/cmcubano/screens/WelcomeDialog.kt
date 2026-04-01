@@ -113,7 +113,7 @@ fun WelcomeDialog(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "La aplicación es compatible con los dispositivos Android que ejecutan Android 7 o superior. Para obtener la mejor experiencia, se recomienda un dispositivo con GPS y acceso a datos móviles.",
+                        text = "La aplicación es compatible con los dispositivos Android que ejecutan Android 8 o superior. Para obtener la mejor experiencia, se recomienda un dispositivo con GPS y acceso a datos móviles.",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(top = 8.dp)
                     )

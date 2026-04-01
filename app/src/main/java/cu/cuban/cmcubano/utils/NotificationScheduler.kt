@@ -16,6 +16,8 @@ object NotificationScheduler {
     private const val TAG = "NotificationScheduler"
     private const val REQUEST_CODE = 1001
     private const val WORK_NAME = "expiration_check_work"
+    private const val RECHARGE_360_REQUEST_CODE_SIM1 = 2001
+    private const val RECHARGE_360_REQUEST_CODE_SIM2 = 2002
 
     fun scheduleDailyCheck(context: Context) {
         // 1. Programar con AlarmManager (Alta precisión si es posible)
@@ -106,5 +108,63 @@ object NotificationScheduler {
         // Cancelar Work
         WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
         Log.d(TAG, "Todos los chequeos cancelados")
+    }
+
+    fun scheduleRecharge360Alarm(context: Context, simIndex: Int, targetDateMillis: Long) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val requestCode = if (simIndex == 0) RECHARGE_360_REQUEST_CODE_SIM1 else RECHARGE_360_REQUEST_CODE_SIM2
+
+        val intent = Intent(context, NotificationReceiver::class.java).apply {
+            action = "ACTION_RECHARGE_360_ALERT"
+            putExtra("sim_index", simIndex)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, targetDateMillis, pendingIntent)
+                } else {
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, targetDateMillis, pendingIntent)
+                }
+            } else {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, targetDateMillis, pendingIntent)
+            }
+            val targetDate = java.util.Date(targetDateMillis)
+            Log.d(TAG, "Alarma de Recarga 360 (SIM ${simIndex + 1}) programada para: $targetDate")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Error al programar alarma de Recarga 360: ${e.message}")
+        }
+    }
+
+    fun cancelRecharge360Alarm(context: Context, simIndex: Int) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val requestCode = if (simIndex == 0) RECHARGE_360_REQUEST_CODE_SIM1 else RECHARGE_360_REQUEST_CODE_SIM2
+
+        val intent = Intent(context, NotificationReceiver::class.java).apply {
+            action = "ACTION_RECHARGE_360_ALERT"
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        pendingIntent?.let { alarmManager.cancel(it) }
+        Log.d(TAG, "Alarma de Recarga 360 (SIM ${simIndex + 1}) cancelada")
+    }
+
+    fun triggerImmediateRecharge360Notification(context: Context, simIndex: Int) {
+        val intent = Intent(context, NotificationReceiver::class.java).apply {
+            action = "ACTION_RECHARGE_360_IMMEDIATE"
+            putExtra("sim_index", simIndex)
+        }
+        context.sendBroadcast(intent)
+        Log.d(TAG, "Notificación inmediata de Recarga 360 (SIM ${simIndex + 1}) disparada")
     }
 }

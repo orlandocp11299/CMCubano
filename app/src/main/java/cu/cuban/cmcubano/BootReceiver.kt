@@ -6,6 +6,7 @@ import android.content.Intent
 import android.util.Log
 import cu.cuban.cmcubano.utils.PremiumManager
 import cu.cuban.cmcubano.utils.NotificationScheduler
+import cu.cuban.cmcubano.NotificationReceiver
 
 
 class BootReceiver : BroadcastReceiver() {
@@ -25,12 +26,25 @@ class BootReceiver : BroadcastReceiver() {
             
             if (isEnabled && startTime > 0 && isPremium) {
                 Log.d("BootReceiver", "Recordatorio activo. Activando chequeo inmediato y reprogramando...")
-                
+
                 // 1. Ejecutar un chequeo inmediato por si el teléfono estuvo apagado a las 9 AM
                 NotificationScheduler.triggerImmediateCheck(context)
-                
+
                 // 2. Reprogramar la alarma para los siguientes días
                 NotificationScheduler.scheduleDailyCheck(context)
+            }
+
+            // Verificar y reprogramar alarmas de Recarga 360
+            val recharge360Prefs = context.getSharedPreferences("recharge360_prefs", Context.MODE_PRIVATE)
+            val isRecharge360Enabled = recharge360Prefs.getBoolean("recharge360_enabled", false)
+
+            if (isRecharge360Enabled) {
+                Log.d("BootReceiver", "Recarga 360 activo. Verificando y reprogramando alarmas...")
+
+                // Ejecutar verificación inmediata de Recarga 360
+                val checkIntent = Intent(context, NotificationReceiver::class.java)
+                checkIntent.action = "ACTION_RECHARGE_360_CHECK"
+                context.sendBroadcast(checkIntent)
             }
 
             // Iniciar Monitor de Red si está activo

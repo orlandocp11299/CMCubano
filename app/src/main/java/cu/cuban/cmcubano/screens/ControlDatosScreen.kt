@@ -14,6 +14,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -34,8 +35,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -44,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Canvas
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -79,6 +83,14 @@ fun ControlDatosScreen(navController: NavController) {
     var showPermissionDialog by remember { mutableStateOf(false) }
     var showDiagnostics by remember { mutableStateOf(false) }
     var currentRange by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    var monthOffset by remember { mutableStateOf(0) }
+    var weekOffset by remember { mutableStateOf(0) }
+    var dayOffset by remember { mutableStateOf(0) }
+
+    // Lógica de preferencias persistentes (vista y filtro de aplicaciones)
+    val prefs = remember { context.getSharedPreferences("control_datos_prefs", Context.MODE_PRIVATE) }
+    var isGridView by remember { mutableStateOf(prefs.getBoolean("is_grid_view", true)) }
+    var sortFilter by remember { mutableStateOf(prefs.getString("app_sort_filter", "Total") ?: "Total") }
 
     // Lógica de Premium y Prueba de 3 min
     val isPremium = remember { cu.cuban.cmcubano.utils.PremiumManager.isPremium(context) }
@@ -116,7 +128,7 @@ fun ControlDatosScreen(navController: NavController) {
         if (!silent) isLoading = true
         scope.launch(Dispatchers.IO) {
             try {
-                val (startTime, endTime) = calculateTimeRange(period)
+                val (startTime, endTime) = calculateTimeRange(period, monthOffset, weekOffset, dayOffset)
                 
                 // Ejecutar consultas en paralelo para mayor velocidad
                 val (mobileUsage, wifiUsage, appUsage) = coroutineScope {
@@ -313,118 +325,546 @@ fun ControlDatosScreen(navController: NavController) {
         )
     }
 
+    var showAllApps by remember { mutableStateOf(false) }
+
+    val isDark = isSystemInDarkTheme()
+    val bgColor = MaterialTheme.colorScheme.background
+    val cardBgColor = MaterialTheme.colorScheme.surface
+    val titleTextColor = MaterialTheme.colorScheme.onSurface
+    val subtitleTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val trackBgColor = MaterialTheme.colorScheme.surfaceVariant
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp)
+            .background(bgColor)
     ) {
-        // Header con título
+        // Top App Bar
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = { navController.popBackStack() }) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
-            }
-            
-            Text(
-                text = "Control de Datos",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(start = 8.dp).weight(1f)
-            )
-
-            IconButton(onClick = { 
-                VibrationManager.vibrate(context)
-                navController.navigate("control_datos_settings") 
-            }) {
-                Icon(Icons.Default.Settings, contentDescription = "Ajustes")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Selector de período
-        PeriodSelector(
-            selectedPeriod = selectedPeriod,
-            onPeriodSelected = { period ->
-                selectedPeriod = period
-                if (hasUsageStatsPermission) {
-                    refreshData(period, silent = true)
+            Surface(
+                modifier = Modifier.size(44.dp),
+                shape = RoundedCornerShape(22.dp),
+                color = cardBgColor,
+                shadowElevation = 2.dp,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.3f else 0.6f)
+                )
+            ) {
+                IconButton(onClick = { navController.popBackStack() }) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Volver",
+                        tint = titleTextColor
+                    )
                 }
             }
-        )
 
-        // Mostrar rango de fechas si es Semana
-        if (selectedPeriod == "Semana" && currentRange != null) {
-            val sdf = SimpleDateFormat("d MMM", Locale("es"))
-            val rangeName = "${sdf.format(Date(currentRange!!.first))} - ${sdf.format(Date(currentRange!!.second))}"
-            
-            Text(
-                text = rangeName,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Surface(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
-                textAlign = TextAlign.Center
+                    .weight(1f)
+                    .height(44.dp),
+                shape = RoundedCornerShape(22.dp),
+                color = cardBgColor,
+                shadowElevation = 2.dp,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.3f else 0.6f)
+                )
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Control de datos",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        ),
+                        color = titleTextColor
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Surface(
+                modifier = Modifier.size(44.dp),
+                shape = RoundedCornerShape(22.dp),
+                color = cardBgColor,
+                shadowElevation = 2.dp,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.3f else 0.6f)
+                )
+            ) {
+                IconButton(onClick = {
+                    VibrationManager.vibrate(context)
+                    navController.navigate("control_datos_settings")
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = "Ajustes",
+                        tint = titleTextColor
+                    )
+                }
+            }
+        }
+
+        // Selector de período
+        Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+            PeriodSelector(
+                selectedPeriod = selectedPeriod,
+                onPeriodSelected = { period ->
+                    selectedPeriod = period
+                    if (period != "Mes") {
+                        monthOffset = 0
+                    }
+                    if (period != "Semana") {
+                        weekOffset = 0
+                    }
+                    if (period != "Ayer") {
+                        dayOffset = 0
+                    } else {
+                        // Al seleccionar Ayer, asegurar que dayOffset sea 0
+                        dayOffset = 0
+                    }
+                    // Invalidar currentRange para evitar mostrar datos incorrectos
+                    currentRange = null
+                    if (hasUsageStatsPermission) {
+                        refreshData(period, silent = true)
+                    }
+                }
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        // Mostrar fecha seleccionada si es Ayer, rango de fechas si es Semana o nombre del mes si es Mes
+        if ((selectedPeriod == "Ayer" || selectedPeriod == "Semana" || selectedPeriod == "Mes") && currentRange != null) {
+            if (selectedPeriod == "Ayer") {
+                val sdf = SimpleDateFormat("d MMM yyyy", Locale("es"))
+                val dateStr = sdf.format(Date(currentRange!!.first)).replaceFirstChar { it.uppercase() }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = {
+                            VibrationManager.vibrate(context)
+                            if (dayOffset < 180) {
+                                dayOffset++
+                                refreshData("Ayer", silent = true)
+                            }
+                        },
+                        modifier = Modifier.size(32.dp),
+                        enabled = dayOffset < 180
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Día anterior",
+                            tint = if (dayOffset < 180) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Text(
+                        text = dateStr,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable {
+                            VibrationManager.vibrate(context)
+                            val initialCal = java.util.Calendar.getInstance().apply {
+                                timeInMillis = currentRange!!.first
+                            }
+                            android.app.DatePickerDialog(
+                                context,
+                                { _, year, month, dayOfMonth ->
+                                    val selectedCal = java.util.Calendar.getInstance()
+                                    selectedCal.set(year, month, dayOfMonth)
+                                    selectedCal.set(Calendar.HOUR_OF_DAY, 0)
+                                    selectedCal.set(Calendar.MINUTE, 0)
+                                    selectedCal.set(Calendar.SECOND, 0)
+                                    selectedCal.set(Calendar.MILLISECOND, 0)
+
+                                    val now = java.util.Calendar.getInstance()
+                                    val diffDays = ((now.timeInMillis - selectedCal.timeInMillis) / (1000 * 60 * 60 * 24)).toInt()
+                                    dayOffset = diffDays.coerceIn(0, 180)
+                                    refreshData("Ayer", silent = true)
+                                    VibrationManager.vibrate(context)
+                                },
+                                initialCal.get(java.util.Calendar.YEAR),
+                                initialCal.get(java.util.Calendar.MONTH),
+                                initialCal.get(java.util.Calendar.DAY_OF_MONTH)
+                            ).apply {
+                                datePicker.maxDate = System.currentTimeMillis()
+                            }.show()
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    IconButton(
+                        onClick = {
+                            VibrationManager.vibrate(context)
+                            if (dayOffset > 0) {
+                                dayOffset--
+                                refreshData("Ayer", silent = true)
+                            }
+                        },
+                        modifier = Modifier.size(32.dp),
+                        enabled = dayOffset > 0
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = "Día siguiente",
+                            tint = if (dayOffset > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            } else if (selectedPeriod == "Semana") {
+                val sdf = SimpleDateFormat("d MMM", Locale("es"))
+                val rangeName = "${sdf.format(Date(currentRange!!.first))} - ${sdf.format(Date(currentRange!!.second))}"
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = {
+                            VibrationManager.vibrate(context)
+                            if (weekOffset < 26) {
+                                weekOffset++
+                                refreshData("Semana", silent = true)
+                            }
+                        },
+                        modifier = Modifier.size(32.dp),
+                        enabled = weekOffset < 26
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Semana anterior",
+                            tint = if (weekOffset < 26) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Text(
+                        text = rangeName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    IconButton(
+                        onClick = {
+                            VibrationManager.vibrate(context)
+                            if (weekOffset > 0) {
+                                weekOffset--
+                                refreshData("Semana", silent = true)
+                            }
+                        },
+                        modifier = Modifier.size(32.dp),
+                        enabled = weekOffset > 0
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = "Semana siguiente",
+                            tint = if (weekOffset > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            } else {
+                // Mes con navegación
+                val sdf = SimpleDateFormat("MMMM yyyy", Locale("es"))
+                val monthName = sdf.format(Date(currentRange!!.first)).replaceFirstChar { it.uppercase() }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = {
+                            VibrationManager.vibrate(context)
+                            if (monthOffset < 6) {
+                                monthOffset++
+                                refreshData("Mes", silent = true)
+                            }
+                        },
+                        modifier = Modifier.size(32.dp),
+                        enabled = monthOffset < 6
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Mes anterior",
+                            tint = if (monthOffset < 6) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Text(
+                        text = monthName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    IconButton(
+                        onClick = {
+                            VibrationManager.vibrate(context)
+                            if (monthOffset > 0) {
+                                monthOffset--
+                                refreshData("Mes", silent = true)
+                            }
+                        },
+                        modifier = Modifier.size(32.dp),
+                        enabled = monthOffset > 0
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = "Mes siguiente",
+                            tint = if (monthOffset > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        }
 
         AnimatedContent(
             targetState = selectedPeriod,
             transitionSpec = {
-                fadeIn(animationSpec = tween(600, easing = FastOutSlowInEasing)) togetherWith
-                fadeOut(animationSpec = tween(500, easing = FastOutSlowInEasing))
+                fadeIn(animationSpec = tween(500, easing = FastOutSlowInEasing)) togetherWith
+                fadeOut(animationSpec = tween(400, easing = FastOutSlowInEasing))
             },
             label = "periodTransition",
             modifier = Modifier.weight(1f)
-        ) { targetPeriod ->
-            Column {
-                if (!hasUsageStatsPermission) {
+        ) { _ ->
+            if (!hasUsageStatsPermission) {
+                Box(modifier = Modifier.padding(16.dp)) {
                     PermissionRequiredCard(onRequestPermission = {
                         requestUsageStatsPermission(context)
                     })
-                } else if (isLoading && appUsageList.isEmpty()) {
-                    LoadingIndicator()
-                } else {
-                    if (isPlanConfigured) {
-                        DataPlanCard(
-                            limit = planLimit.toDoubleOrNull() ?: 0.0,
-                            unit = planUnit,
-                            consumedMb = planRealTimeConsumed
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
+                }
+            } else if (isLoading && appUsageList.isEmpty()) {
+                LoadingIndicator()
+            } else {
+                // Ordenar según el filtro seleccionado
+                val sortedApps = remember(appUsageList, sortFilter) {
+                    when (sortFilter) {
+                        "WiFi" -> appUsageList.sortedByDescending { it.wifiBytes }
+                        "Móvil" -> appUsageList.sortedByDescending { it.mobileBytes }
+                        else -> appUsageList.sortedByDescending { it.totalBytes }
                     }
-        
-                    // Tarjetas de resumen
-                    DataSummaryCards(
-                        mobileDataUsage = mobileDataUsage,
-                        wifiDataUsage = wifiDataUsage,
-                        totalDataUsage = mobileDataUsage + wifiDataUsage
-                    )
-        
-                    Spacer(modifier = Modifier.height(24.dp))
-        
-                    // Lista de aplicaciones
-                    Text(
-                        text = "Consumo por Aplicaciones",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-        
-                    Spacer(modifier = Modifier.height(12.dp))
-        
-                    AppUsageList(
-                        appUsageList = appUsageList,
-                        modifier = Modifier.weight(1f)
-                    )
+                }
+                val displayedApps = if (showAllApps) sortedApps else sortedApps.take(4)
+                val totalAppsBytes = sortedApps.sumOf {
+                    when (sortFilter) {
+                        "WiFi" -> it.wifiBytes
+                        "Móvil" -> it.mobileBytes
+                        else -> it.totalBytes
+                    }
+                }.coerceAtLeast(1L)
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 20.dp),
+                    contentPadding = PaddingValues(top = 16.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    item(key = "plan_and_summary_card") {
+                        PlanAndSummaryCard(
+                            isPlanConfigured = isPlanConfigured,
+                            planLimit = planLimit.toDoubleOrNull() ?: 0.0,
+                            planUnit = planUnit,
+                            planConsumedMb = planRealTimeConsumed,
+                            mobileDataUsage = mobileDataUsage,
+                            wifiDataUsage = wifiDataUsage,
+                            periodLabel = when (selectedPeriod) {
+                                "Hoy" -> "hoy"
+                                "Ayer" -> {
+                                    if (dayOffset == 0) "ayer"
+                                    else {
+                                        val sdf = SimpleDateFormat("d-MMM", Locale("es"))
+                                        sdf.format(Date(currentRange!!.first)).uppercase()
+                                    }
+                                }
+                                "Semana" -> "semana"
+                                else -> "mes"
+                            }
+                        )
+                    }
+
+                    item(key = "apps_header") {
+                        val filterBg = if (isDark) Color(0xFF1E1E22) else Color(0xFFF1F5F9)
+                        val filterBorder = MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.35f else 0.6f)
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp, bottom = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Título "Aplic."
+                            Text(
+                                text = "Aplic.",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 19.sp
+                                ),
+                                color = titleTextColor
+                            )
+
+                            // Selector de filtro entre "Total", "WiFi", "Móvil"
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(filterBg)
+                                    .border(1.dp, filterBorder, RoundedCornerShape(12.dp))
+                                    .padding(2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                listOf("Total", "WiFi", "Móvil").forEach { filterOption ->
+                                    val isSelected = sortFilter == filterOption
+                                    val bg = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
+                                    val textColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(9.dp))
+                                            .background(bg)
+                                            .clickable {
+                                                if (sortFilter != filterOption) {
+                                                    VibrationManager.vibrate(context)
+                                                    sortFilter = filterOption
+                                                    prefs.edit().putString("app_sort_filter", filterOption).apply()
+                                                }
+                                            }
+                                            .padding(horizontal = 9.dp, vertical = 5.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = filterOption,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontSize = 11.5.sp
+                                            ),
+                                            color = textColor
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Botón selector de vista (cuadrícula / lista) + "Ver todas"
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (appUsageList.size > 4) {
+                                    Text(
+                                        text = if (showAllApps) "Menos" else "Todas",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.5.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                VibrationManager.vibrate(context)
+                                                showAllApps = !showAllApps
+                                            }
+                                            .padding(horizontal = 4.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        VibrationManager.vibrate(context)
+                                        isGridView = !isGridView
+                                        prefs.edit().putBoolean("is_grid_view", isGridView).apply()
+                                    },
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isGridView) Icons.Default.List else Icons.Default.Grid3x3,
+                                        contentDescription = if (isGridView) "Cambiar a vista de lista" else "Cambiar a vista de cuadrícula",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (isGridView) {
+                        val chunkedApps = displayedApps.chunked(2)
+                        items(
+                            items = chunkedApps,
+                            key = { row -> row.joinToString("-") { it.packageName } }
+                        ) { rowApps ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                for (app in rowApps) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        ModernAppCard(
+                                            appUsage = app,
+                                            totalUsageAcrossApps = totalAppsBytes,
+                                            filterType = sortFilter
+                                        )
+                                    }
+                                }
+                                if (rowApps.size == 1) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    } else {
+                        items(
+                            items = displayedApps,
+                            key = { app -> app.packageName }
+                        ) { app ->
+                            ModernAppListItem(
+                                appUsage = app,
+                                totalUsageAcrossApps = totalAppsBytes,
+                                filterType = sortFilter
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -497,18 +937,21 @@ fun PermissionRequiredCard(onRequestPermission: () -> Unit) {
 @Composable
 fun LoadingIndicator() {
     Box(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 32.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(
-                modifier = Modifier.size(48.dp),
+                modifier = Modifier.size(44.dp),
                 color = MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "Cargando datos de uso...",
-                style = MaterialTheme.typography.bodyLarge
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -534,7 +977,7 @@ fun PeriodSelector(
             .fillMaxWidth()
             .height(48.dp)
             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
-            .border(1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f), RoundedCornerShape(24.dp))
+            .border(1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
             .padding(4.dp)
     ) {
         val pillWidth = maxWidth / periods.size
@@ -571,374 +1014,1018 @@ fun PeriodSelector(
 }
 
 @Composable
-fun DataSummaryCards(
+fun PlanAndSummaryCard(
+    isPlanConfigured: Boolean,
+    planLimit: Double,
+    planUnit: String,
+    planConsumedMb: Double,
     mobileDataUsage: Long,
     wifiDataUsage: Long,
-    totalDataUsage: Long
+    periodLabel: String
 ) {
-    Row(
+    val isDark = isSystemInDarkTheme()
+    val cardBg = MaterialTheme.colorScheme.surface
+    val textPrimary = MaterialTheme.colorScheme.onSurface
+    val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
+    val trackBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isDark) 0.5f else 0.7f)
+
+    Card(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 2.dp else 4.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.35f else 0.65f)
+        )
     ) {
-        DataCard(
-            title = "Móvil",
-            usage = mobileDataUsage,
-            icon = Icons.Default.SignalCellular4Bar,
-            color = Color(0xFF2196F3),
-            modifier = Modifier.weight(1f)
-        )
-        
-        DataCard(
-            title = "WiFi",
-            usage = wifiDataUsage,
-            icon = Icons.Default.Wifi,
-            color = Color(0xFF4CAF50),
-            modifier = Modifier.weight(1f)
-        )
-        
-        DataCard(
-            title = "Total",
-            usage = totalDataUsage,
-            icon = Icons.Default.DataUsage,
-            color = Color(0xFFFF9800),
-            modifier = Modifier.weight(1f)
-        )
+        Column(
+            modifier = Modifier.padding(20.dp)
+        ) {
+            if (isPlanConfigured) {
+                val limitMb = if (planUnit == "GB") planLimit * 1024.0 else planLimit
+                val remainingMb = (limitMb - planConsumedMb).coerceAtLeast(0.0)
+                val progress = if (limitMb > 0) (planConsumedMb / limitMb).toFloat().coerceIn(0f, 1f) else 0f
+
+                // Top: Plan de datos Header y Consumidos
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column {
+                        Text(
+                            text = "Plan de datos",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp
+                            ),
+                            color = textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Cuota total: $planLimit $planUnit",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                            color = textSecondary
+                        )
+                    }
+
+                    Column(horizontalAlignment = Alignment.End) {
+                        val consumedDisplay = if (planUnit == "GB") {
+                            String.format(java.util.Locale.US, "%.3f", planConsumedMb / 1024.0)
+                        } else {
+                            String.format(java.util.Locale.US, "%.1f", planConsumedMb)
+                        }
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = consumedDisplay,
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 24.sp
+                                ),
+                                color = textPrimary
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = planUnit,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                ),
+                                color = textSecondary,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                        }
+                        Text(
+                            text = "Consumidos",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
+                            color = textSecondary
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Progress Bar
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    color = Color(0xFFE76E2E),
+                    trackColor = trackBg
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // % usado y Restante
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = String.format(java.util.Locale.US, "%.1f %% usado", progress * 100),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        ),
+                        color = Color(0xFFE76E2E)
+                    )
+
+                    val remainingDisplay = if (planUnit == "GB") {
+                        String.format(java.util.Locale.US, "%.3f GB", remainingMb / 1024.0)
+                    } else {
+                        String.format(java.util.Locale.US, "%.1f MB", remainingMb)
+                    }
+                    Text(
+                        text = "Restante: $remainingDisplay",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        ),
+                        color = textPrimary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
+            // Circular Donut Gauge & Metrics Breakdown
+            val totalBytes = (mobileDataUsage + wifiDataUsage).coerceAtLeast(0L)
+            val wifiPct = if (totalBytes > 0) (wifiDataUsage.toDouble() / totalBytes * 100).toInt() else 0
+            val mobilePct = if (totalBytes > 0) 100 - wifiPct else 0
+
+            // Colores: Móvil con el mismo naranja del plan (0xFFE76E2E) y WiFi con el azul del selector (primary)
+            val mobileColor = Color(0xFFE76E2E)
+            val wifiColor = MaterialTheme.colorScheme.primary
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Donut Chart
+                Box(
+                    modifier = Modifier
+                        .size(105.dp)
+                        .padding(4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val mobileFraction = if (totalBytes > 0) (mobileDataUsage.toFloat() / totalBytes) else 0.5f
+                    val wifiFraction = 1f - mobileFraction
+
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val strokeWidth = 12.dp.toPx()
+                        // Mobile Arc (Azul selector)
+                        drawArc(
+                            color = mobileColor,
+                            startAngle = -90f,
+                            sweepAngle = mobileFraction * 360f,
+                            useCenter = false,
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                        )
+                        // WiFi Arc (Ámbar contrastante)
+                        drawArc(
+                            color = wifiColor,
+                            startAngle = -90f + (mobileFraction * 360f),
+                            sweepAngle = wifiFraction * 360f,
+                            useCenter = false,
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                        )
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        val (valStr, unitStr) = formatTotalValueAndUnit(totalBytes)
+                        Text(
+                            text = valStr,
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 19.sp
+                            ),
+                            color = textPrimary
+                        )
+                        Text(
+                            text = "$unitStr $periodLabel",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = textSecondary
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(24.dp))
+
+                // Breakdown list: Móvil y WiFi
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Mobile row
+                    Row(verticalAlignment = Alignment.Top) {
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .size(10.dp)
+                                .background(mobileColor, RoundedCornerShape(5.dp))
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Móvil · $mobilePct %",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = textSecondary
+                            )
+                            Text(
+                                text = formatBytes(mobileDataUsage),
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp
+                                ),
+                                color = textPrimary
+                            )
+                        }
+                    }
+
+                    // WiFi row
+                    Row(verticalAlignment = Alignment.Top) {
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .size(10.dp)
+                                .background(wifiColor, RoundedCornerShape(5.dp))
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "WiFi · $wifiPct %",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = textSecondary
+                            )
+                            Text(
+                                text = formatBytes(wifiDataUsage),
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp
+                                ),
+                                color = textPrimary
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
+
+private fun formatTotalValueAndUnit(bytes: Long): Pair<String, String> {
+    if (bytes < 1024 * 1024) {
+        val kb = bytes / 1024.0
+        return Pair(String.format(java.util.Locale.US, "%.1f", kb), "KB")
+    }
+    val mb = bytes / (1024.0 * 1024.0)
+    if (mb < 1024.0) {
+        return Pair(String.format(java.util.Locale.US, "%.1f", mb), "MB")
+    }
+    val gb = mb / 1024.0
+    return Pair(String.format(java.util.Locale.US, "%.2f", gb), "GB")
+}
+
 @Composable
-fun DataPlanCard(
-    limit: Double,
-    unit: String,
-    consumedMb: Double
+fun ModernAppCard(
+    appUsage: AppDataUsage,
+    totalUsageAcrossApps: Long,
+    filterType: String = "Total"
 ) {
-    val limitMb = if (unit == "GB") limit * 1024.0 else limit
-    val remainingMb = (limitMb - consumedMb).coerceAtLeast(0.0)
-    val progress = if (limitMb > 0) (consumedMb / limitMb).toFloat().coerceIn(0f, 1f) else 0f
-    
-    val color = when {
-        progress > 0.9f -> MaterialTheme.colorScheme.error
-        progress > 0.7f -> Color(0xFFFF9800) // Orange
-        else -> MaterialTheme.colorScheme.primary
+    val context = LocalContext.current
+    val packageManager = context.packageManager
+    val isDark = isSystemInDarkTheme()
+
+    // Colors matching dark/light mode with strong contrast
+    val cardBg = MaterialTheme.colorScheme.surface
+    val textPrimary = MaterialTheme.colorScheme.onSurface
+    val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
+    val badgeBg = MaterialTheme.colorScheme.surfaceVariant
+    val badgeText = MaterialTheme.colorScheme.onSurfaceVariant
+    val trackBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isDark) 0.5f else 0.7f)
+
+    // App icon loader
+    val appIcon = remember(appUsage.packageName) {
+        try {
+            val drawable = packageManager.getApplicationIcon(appUsage.packageName)
+            val bitmap = android.graphics.Bitmap.createBitmap(
+                drawable.intrinsicWidth.coerceAtLeast(1),
+                drawable.intrinsicHeight.coerceAtLeast(1),
+                android.graphics.Bitmap.Config.ARGB_8888
+            )
+            val canvas = android.graphics.Canvas(bitmap)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+            bitmap.asImageBitmap()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    val totalBytes = appUsage.totalBytes
+    val wifiBytes = appUsage.wifiBytes
+    val mobileBytes = appUsage.mobileBytes
+
+    val targetBytes = when (filterType) {
+        "WiFi" -> wifiBytes
+        "Móvil" -> mobileBytes
+        else -> totalBytes
+    }
+
+    val overallPct = if (totalUsageAcrossApps > 0) {
+        ((targetBytes.toDouble() / totalUsageAcrossApps) * 100).toInt().coerceIn(0, 100)
+    } else 0
+
+    // Pastel backgrounds based on app name initial (adaptive for dark/light)
+    val initial = appUsage.appName.firstOrNull()?.uppercaseChar() ?: 'A'
+    val (avatarBg, avatarText) = remember(initial, isDark) {
+        if (isDark) {
+            when (initial) {
+                'A', 'B', 'C', 'D' -> Pair(Color(0xFF452405), Color(0xFFFDBA74))
+                'E', 'F', 'G', 'H' -> Pair(Color(0xFF1E3A8A), Color(0xFF93C5FD))
+                'I', 'J', 'K', 'L', 'P' -> Pair(Color(0xFF064E3B), Color(0xFF6EE7B7))
+                'M', 'N', 'O' -> Pair(Color(0xFF3B0764), Color(0xFFD8B4FE))
+                'Q', 'R', 'S', 'T' -> Pair(Color(0xFF500724), Color(0xFFF9A8D4))
+                else -> Pair(Color(0xFF450A0A), Color(0xFFFCA5A5))
+            }
+        } else {
+            when (initial) {
+                'A', 'B', 'C', 'D' -> Pair(Color(0xFFFFEDD5), Color(0xFFC2410C))
+                'E', 'F', 'G', 'H' -> Pair(Color(0xFFDBEAFE), Color(0xFF1D4ED8))
+                'I', 'J', 'K', 'L', 'P' -> Pair(Color(0xFFD1FAE5), Color(0xFF0F766E))
+                'M', 'N', 'O' -> Pair(Color(0xFFF3E8FF), Color(0xFF7E22CE))
+                'Q', 'R', 'S', 'T' -> Pair(Color(0xFFFCE7F3), Color(0xFFBE185D))
+                else -> Pair(Color(0xFFFEE2E2), Color(0xFFB91C1C))
+            }
+        }
     }
 
     Card(
         modifier = Modifier
-            .fillMaxWidth()
-            .shadow(8.dp, RoundedCornerShape(20.dp)),
+            .fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 2.dp else 3.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.35f else 0.65f)
+        )
     ) {
         Column(
-            modifier = Modifier
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            color.copy(alpha = 0.15f),
-                            color.copy(alpha = 0.05f)
-                        )
-                    )
-                )
-                .padding(20.dp)
+            modifier = Modifier.padding(14.dp)
         ) {
+            // Header: Icon + App Name
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (appIcon != null) {
+                    Image(
+                        bitmap = appIcon,
+                        contentDescription = appUsage.appName,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .background(avatarBg, RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = initial.toString(),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            ),
+                            color = avatarText
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Text(
+                    text = appUsage.appName,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    ),
+                    color = textPrimary,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Consumo + Porcentaje Badge según el filtro
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                val (valStr, unitStr) = formatTotalValueAndUnit(targetBytes)
+                Row(verticalAlignment = Alignment.Bottom) {
                     Text(
-                        text = "Plan de Datos",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = color
+                        text = valStr,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 18.sp
+                        ),
+                        color = textPrimary
                     )
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
-                        text = "Cuota total: $limit $unit",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
-                
-                // Consumo central grande
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = if (unit == "GB") String.format("%.3f GB", consumedMb / 1024.0) else String.format("%.0f MB", consumedMb),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Consumidos",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        text = unitStr,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        ),
+                        color = textSecondary,
+                        modifier = Modifier.padding(bottom = 2.dp)
                     )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Barra de progreso premium
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                LinearProgressIndicator(
-                    progress = { progress },
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(10.dp)
-                        .clip(RoundedCornerShape(5.dp)),
-                    color = color,
-                    trackColor = color.copy(alpha = 0.1f)
-                )
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .background(badgeBg, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
                 ) {
                     Text(
-                        text = String.format(java.util.Locale.US, "%.1f%% usado", progress * 100),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = color
+                        text = "$overallPct %",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        ),
+                        color = badgeText
                     )
-                    Text(
-                        text = "Restante: " + if (unit == "GB") String.format("%.3f GB", remainingMb / 1024.0) else String.format("%.0f MB", remainingMb),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = if (remainingMb < (limitMb * 0.1)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Barra de progreso y filas de desglose
+            val mobileColor = Color(0xFFE76E2E) // Naranja del plan de datos
+            val wifiColor = MaterialTheme.colorScheme.primary // Azul del selector de períodos
+
+            when (filterType) {
+                "Móvil" -> {
+                    // Barra 100% móvil
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(mobileColor)
                     )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Solo fila Móvil
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .background(mobileColor, RoundedCornerShape(4.dp))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Móvil",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = textSecondary
+                            )
+                        }
+                        Text(
+                            text = formatShortBytes(mobileBytes),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = textPrimary
+                        )
+                    }
+                }
+                "WiFi" -> {
+                    // Barra 100% WiFi
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(wifiColor)
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Solo fila WiFi
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .background(wifiColor, RoundedCornerShape(4.dp))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "WiFi",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = textSecondary
+                            )
+                        }
+                        Text(
+                            text = formatShortBytes(wifiBytes),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = textPrimary
+                        )
+                    }
+                }
+                else -> {
+                    // Total: Barra dividida (Móvil / WiFi)
+                    val mobileRatio = if (totalBytes > 0) (mobileBytes.toFloat() / totalBytes) else 0.5f
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(trackBg)
+                    ) {
+                        if (mobileRatio > 0f) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(mobileRatio.coerceAtLeast(0.01f))
+                                    .fillMaxHeight()
+                                    .background(mobileColor)
+                            )
+                        }
+                        if (1f - mobileRatio > 0f) {
+                            Box(
+                                modifier = Modifier
+                                    .weight((1f - mobileRatio).coerceAtLeast(0.01f))
+                                    .fillMaxHeight()
+                                    .background(wifiColor)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Móvil Stat Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .background(mobileColor, RoundedCornerShape(4.dp))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Móvil",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = textSecondary
+                            )
+                        }
+                        Text(
+                            text = formatShortBytes(mobileBytes),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = textPrimary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // WiFi Stat Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .background(wifiColor, RoundedCornerShape(4.dp))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "WiFi",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = textSecondary
+                            )
+                        }
+                        Text(
+                            text = formatShortBytes(wifiBytes),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = textPrimary
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-
 @Composable
-fun DataCard(
-    title: String,
-    usage: Long,
-    icon: ImageVector,
-    color: Color,
+fun ModernAppListItem(
+    appUsage: AppDataUsage,
+    totalUsageAcrossApps: Long,
+    filterType: String = "Total",
     modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = modifier
-            .shadow(4.dp, RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            color.copy(alpha = 0.1f),
-                            color.copy(alpha = 0.05f)
-                        )
-                    )
-                )
-                .padding(12.dp)
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    modifier = Modifier.size(24.dp),
-                    tint = color
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = formatBytes(usage),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun AppUsageList(
-    appUsageList: List<AppDataUsage>,
-    modifier: Modifier = Modifier
-) {
-    val listState = rememberLazyListState()
-    
-    LazyColumn(
-        state = listState,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier.fillMaxWidth()
-    ) {
-        items(
-            items = appUsageList,
-            key = { it.packageName }
-        ) { appUsage ->
-            AppUsageItem(appUsage = appUsage)
-        }
-    }
-}
-
-@Composable
-fun AppUsageItem(appUsage: AppDataUsage) {
     val context = LocalContext.current
+    val isDark = isSystemInDarkTheme()
+    val cardBg = MaterialTheme.colorScheme.surface
+    val textPrimary = MaterialTheme.colorScheme.onSurface
+    val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
+    val trackBg = if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E7EB)
+
+    val totalBytes = appUsage.totalBytes
+    val mobileBytes = appUsage.mobileBytes
+    val wifiBytes = appUsage.wifiBytes
+
+    val targetBytes = when (filterType) {
+        "WiFi" -> wifiBytes
+        "Móvil" -> mobileBytes
+        else -> totalBytes
+    }
+
+    val overallPct = if (totalUsageAcrossApps > 0) {
+        val calculated = (targetBytes.toDouble() / totalUsageAcrossApps.toDouble()) * 100.0
+        String.format(java.util.Locale.US, "%.1f", calculated)
+    } else "0.0"
+
     val packageManager = context.packageManager
-    
-    // Intentar cargar el icono real de la aplicación
     val appIcon = remember(appUsage.packageName) {
         try {
             val drawable = packageManager.getApplicationIcon(appUsage.packageName)
-            if (drawable != null) {
-                val bitmap = android.graphics.Bitmap.createBitmap(
-                    drawable.intrinsicWidth,
-                    drawable.intrinsicHeight,
-                    android.graphics.Bitmap.Config.ARGB_8888
-                )
-                val canvas = android.graphics.Canvas(bitmap)
-                drawable.setBounds(0, 0, canvas.width, canvas.height)
-                drawable.draw(canvas)
-                bitmap.asImageBitmap()
-            } else {
-                null
-            }
-        } catch (e: Exception) {
+            val bitmap = android.graphics.Bitmap.createBitmap(
+                drawable.intrinsicWidth.coerceAtLeast(1),
+                drawable.intrinsicHeight.coerceAtLeast(1),
+                android.graphics.Bitmap.Config.ARGB_8888
+            )
+            val canvas = android.graphics.Canvas(bitmap)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+            bitmap.asImageBitmap()
+        } catch (_: Exception) {
             null
         }
     }
-    
+
+    val initial = appUsage.appName.firstOrNull()?.uppercaseChar() ?: '?'
+    val (avatarBg, avatarText) = remember(initial, isDark) {
+        if (isDark) {
+            when (initial) {
+                'A', 'B', 'C', 'D' -> Pair(Color(0xFF3B2518), Color(0xFFFF9E66))
+                'E', 'F', 'G', 'H' -> Pair(Color(0xFF1E293B), Color(0xFF60A5FA))
+                'I', 'J', 'K', 'L', 'P' -> Pair(Color(0xFF143026), Color(0xFF34D399))
+                'M', 'N', 'O' -> Pair(Color(0xFF2E1A47), Color(0xFFC084FC))
+                'Q', 'R', 'S', 'T' -> Pair(Color(0xFF381528), Color(0xFFF472B6))
+                else -> Pair(Color(0xFF3A1C1C), Color(0xFFF87171))
+            }
+        } else {
+            when (initial) {
+                'A', 'B', 'C', 'D' -> Pair(Color(0xFFFFEDD5), Color(0xFFC2410C))
+                'E', 'F', 'G', 'H' -> Pair(Color(0xFFDBEAFE), Color(0xFF1D4ED8))
+                'I', 'J', 'K', 'L', 'P' -> Pair(Color(0xFFD1FAE5), Color(0xFF0F766E))
+                'M', 'N', 'O' -> Pair(Color(0xFFF3E8FF), Color(0xFF7E22CE))
+                'Q', 'R', 'S', 'T' -> Pair(Color(0xFFFCE7F3), Color(0xFFBE185D))
+                else -> Pair(Color(0xFFFEE2E2), Color(0xFFB91C1C))
+            }
+        }
+    }
+
+    val mobileColor = Color(0xFFE76E2E)
+    val wifiColor = MaterialTheme.colorScheme.primary
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 2.dp else 3.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.35f else 0.65f)
+        )
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(14.dp)
         ) {
-            // Icono real de la app o placeholder
-            if (appIcon != null) {
-                Image(
-                    bitmap = appIcon,
-                    contentDescription = "App Icon",
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.Android,
-                        contentDescription = "App Icon",
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(24.dp)
+            // Row 1: App icon + Title + Consumo según filtro + Badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (appIcon != null) {
+                    Image(
+                        bitmap = appIcon,
+                        contentDescription = appUsage.appName,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(avatarBg, RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = initial.toString(),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            ),
+                            color = avatarText
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = appUsage.appName,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        ),
+                        color = textPrimary,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "$overallPct % del total",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        color = textSecondary
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                val (valStr, unitStr) = formatTotalValueAndUnit(targetBytes)
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = valStr,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 18.sp
+                        ),
+                        color = textPrimary
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = unitStr,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        ),
+                        color = textSecondary,
+                        modifier = Modifier.padding(bottom = 2.dp)
                     )
                 }
             }
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = appUsage.appName,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                )
-                
-                Spacer(modifier = Modifier.height(4.dp))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    // Móvil
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SignalCellular4Bar,
-                            contentDescription = null,
-                            modifier = Modifier.size(10.dp),
-                            tint = Color(0xFF2196F3)
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Row 2: Progress bar según el filtro
+            when (filterType) {
+                "Móvil" -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(mobileColor)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Solo Móvil
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .background(mobileColor, RoundedCornerShape(4.dp))
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = formatBytes(appUsage.mobileBytes),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF2196F3),
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            text = "Móvil: ",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = textSecondary
+                        )
+                        Text(
+                            text = formatShortBytes(mobileBytes),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = textPrimary
                         )
                     }
-                    
-                    // WiFi
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Wifi,
-                            contentDescription = null,
-                            modifier = Modifier.size(10.dp),
-                            tint = Color(0xFF4CAF50)
+                }
+                "WiFi" -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(wifiColor)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Solo WiFi
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .background(wifiColor, RoundedCornerShape(4.dp))
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = formatBytes(appUsage.wifiBytes),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF4CAF50),
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            text = "WiFi: ",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = textSecondary
+                        )
+                        Text(
+                            text = formatShortBytes(wifiBytes),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = textPrimary
                         )
                     }
-                    
-                    // Total
+                }
+                else -> {
+                    // Total: barra dividida y ambas estadísticas
+                    val mobileRatio = if (totalBytes > 0) (mobileBytes.toFloat() / totalBytes) else 0.5f
+
                     Row(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(trackBg)
+                    ) {
+                        if (mobileRatio > 0f) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(mobileRatio.coerceAtLeast(0.01f))
+                                    .fillMaxHeight()
+                                    .background(mobileColor)
+                            )
+                        }
+                        if (1f - mobileRatio > 0f) {
+                            Box(
+                                modifier = Modifier
+                                    .weight((1f - mobileRatio).coerceAtLeast(0.01f))
+                                    .fillMaxHeight()
+                                    .background(wifiColor)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Row 3: Móvil stat & WiFi stat
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.DataUsage,
-                            contentDescription = null,
-                            modifier = Modifier.size(10.dp),
-                            tint = Color(0xFFFF9800)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = formatBytes(appUsage.mobileBytes + appUsage.wifiBytes),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFFFF9800),
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
+                        // Móvil
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .background(mobileColor, RoundedCornerShape(4.dp))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Móvil: ",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = textSecondary
+                            )
+                            Text(
+                                text = formatShortBytes(mobileBytes),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = textPrimary
+                            )
+                        }
+
+                        // WiFi
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .background(wifiColor, RoundedCornerShape(4.dp))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "WiFi: ",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = textSecondary
+                            )
+                            Text(
+                                text = formatShortBytes(wifiBytes),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = textPrimary
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+private fun formatShortBytes(bytes: Long): String {
+    if (bytes <= 0L) return "0 B"
+    if (bytes < 1024) return "$bytes B"
+    val kb = bytes / 1024.0
+    if (kb < 1024.0) return String.format(java.util.Locale.US, "%.0f KB", kb)
+    val mb = kb / 1024.0
+    if (mb < 1024.0) return String.format(java.util.Locale.US, "%.1f MB", mb)
+    val gb = mb / 1024.0
+    return String.format(java.util.Locale.US, "%.2f GB", gb)
 }
 
 private fun checkUsageStatsPermission(context: Context): Boolean {
@@ -965,7 +2052,7 @@ private fun requestUsageStatsPermission(context: Context) {
     context.startActivity(intent)
 }
 
-private fun calculateTimeRange(period: String): Pair<Long, Long> {
+private fun calculateTimeRange(period: String, monthOffset: Int = 0, weekOffset: Int = 0, dayOffset: Int = 0): Pair<Long, Long> {
     val calendar = Calendar.getInstance()
     val now = calendar.timeInMillis
     
@@ -980,13 +2067,13 @@ private fun calculateTimeRange(period: String): Pair<Long, Long> {
             Pair(startTime, now)
         }
         "Ayer" -> {
-            calendar.add(Calendar.DAY_OF_YEAR, -1)
+            calendar.add(Calendar.DAY_OF_YEAR, -(dayOffset + 1))
             calendar.set(Calendar.HOUR_OF_DAY, 0)
             calendar.set(Calendar.MINUTE, 0)
             calendar.set(Calendar.SECOND, 0)
             calendar.set(Calendar.MILLISECOND, 0)
             val startTime = calendar.timeInMillis
-            
+
             calendar.set(Calendar.HOUR_OF_DAY, 23)
             calendar.set(Calendar.MINUTE, 59)
             calendar.set(Calendar.SECOND, 59)
@@ -995,21 +2082,24 @@ private fun calculateTimeRange(period: String): Pair<Long, Long> {
             Pair(startTime, endTime)
         }
         "Semana" -> {
+            // Aplicar offset de semanas (negativo para retroceder en el tiempo)
+            calendar.add(Calendar.WEEK_OF_YEAR, -weekOffset)
+
             // Establecer al primer día de la semana según el locale (usualmente Domingo o Lunes)
             calendar.set(Calendar.DAY_OF_WEEK, calendar.firstDayOfWeek)
             calendar.set(Calendar.HOUR_OF_DAY, 0)
             calendar.set(Calendar.MINUTE, 0)
             calendar.set(Calendar.SECOND, 0)
             calendar.set(Calendar.MILLISECOND, 0)
-            
+
             // Si el resultado es en el futuro con respecto a hoy, retroceder una semana
             val tempNow = Calendar.getInstance()
             if (calendar.after(tempNow)) {
                 calendar.add(Calendar.WEEK_OF_YEAR, -1)
             }
-            
+
             val startTime = calendar.timeInMillis
-            
+
             // Sumar 6 días para completar la semana (7 días en total)
             calendar.add(Calendar.DAY_OF_YEAR, 6)
             calendar.set(Calendar.HOUR_OF_DAY, 23)
@@ -1017,18 +2107,19 @@ private fun calculateTimeRange(period: String): Pair<Long, Long> {
             calendar.set(Calendar.SECOND, 59)
             calendar.set(Calendar.MILLISECOND, 999)
             val endTime = calendar.timeInMillis
-            
+
             Pair(startTime, endTime)
         }
         "Mes" -> {
+            calendar.add(Calendar.MONTH, -monthOffset)
             calendar.set(Calendar.DAY_OF_MONTH, 1)
             calendar.set(Calendar.HOUR_OF_DAY, 0)
             calendar.set(Calendar.MINUTE, 0)
             calendar.set(Calendar.SECOND, 0)
             calendar.set(Calendar.MILLISECOND, 0)
             val startTime = calendar.timeInMillis
-            
-            // Ir al último día del mes actual
+
+            // Ir al último día del mes
             calendar.add(Calendar.MONTH, 1)
             calendar.add(Calendar.DAY_OF_YEAR, -1)
             calendar.set(Calendar.HOUR_OF_DAY, 23)
@@ -1036,7 +2127,7 @@ private fun calculateTimeRange(period: String): Pair<Long, Long> {
             calendar.set(Calendar.SECOND, 59)
             calendar.set(Calendar.MILLISECOND, 999)
             val endTime = calendar.timeInMillis
-            
+
             Pair(startTime, endTime)
         }
         else -> {

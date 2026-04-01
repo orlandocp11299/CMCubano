@@ -42,6 +42,8 @@ import androidx.compose.animation.core.*
 
 import androidx.compose.foundation.*
 
+import androidx.compose.foundation.isSystemInDarkTheme
+
 import androidx.compose.foundation.interaction.MutableInteractionSource
 
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -61,6 +63,10 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+
+import androidx.compose.ui.window.Dialog
+
+import androidx.compose.ui.window.DialogProperties
 
 import androidx.compose.runtime.*
 
@@ -109,6 +115,8 @@ import kotlinx.coroutines.*
 import cu.cuban.cmcubano.utils.VibrationManager
 
 import cu.cuban.cmcubano.utils.EnbNameManager
+
+import cu.cuban.cmcubano.UssdManager
 
 
 
@@ -436,9 +444,8 @@ fun UtilesScreen(
 
     var serviceState by remember { mutableStateOf<ServiceState?>(null) }
 
-    var telephonyDisplayInfo by remember { mutableStateOf<TelephonyDisplayInfo?>(null) }
-
-    var physicalChannelConfigList by remember { mutableStateOf<List<PhysicalChannelConfig>>(emptyList()) }
+    var telephonyDisplayInfo by remember { mutableStateOf<Any?>(null) }
+    var physicalChannelConfigList by remember { mutableStateOf<List<Any>>(emptyList()) }
 
     var isProcessingCells by remember { mutableStateOf(false) }
 
@@ -536,7 +543,11 @@ fun UtilesScreen(
 
             }
 
-            val isDataEnabled = telephonyManager.isDataEnabled
+            val isDataEnabled = try {
+                telephonyManager.isDataEnabled
+            } catch (e: Exception) {
+                false
+            }
 
 
 
@@ -584,11 +595,17 @@ fun UtilesScreen(
 
         
 
-        val subId = activeSubscriptions.getOrNull(selectedSimIndex)?.subscriptionId ?: return@LaunchedEffect
+        val subId = activeSubscriptions.getOrNull(selectedSimIndex)?.subscriptionId
 
         val telephonyManagerBase = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
-        val specificTelephonyManager = telephonyManagerBase.createForSubscriptionId(subId)
+        val specificTelephonyManager = if (subId != null) {
+            telephonyManagerBase.createForSubscriptionId(subId)
+        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            telephonyManagerBase // Android 8/9: usar TelephonyManager por defecto
+        } else {
+            return@LaunchedEffect // Android 10+: sin subId no podemos continuar
+        }
 
         
 
@@ -669,19 +686,25 @@ fun UtilesScreen(
                     )
 
                 } else {
+                    // Fallback para Android 8/9 con protección de permisos y excepciones
+                    val hasLocation = ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.ACCESS_FINE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
 
-                    // Fallback para versiones antiguas
-
-                    val newCellInfo = specificTelephonyManager.allCellInfo ?: emptyList()
-
-                    if (isActive) {
-
-                        cellInfoList = newCellInfo
-
-                        updateTrigger.value++
-
+                    if (hasLocation) {
+                        val newCellInfo = try {
+                            specificTelephonyManager.allCellInfo ?: emptyList()
+                        } catch (e: SecurityException) {
+                            emptyList()
+                        } catch (e: RuntimeException) {
+                            // Algunos chips Mediatek lanzan RuntimeException en Android 8
+                            emptyList()
+                        }
+                        if (isActive) {
+                            cellInfoList = newCellInfo
+                            updateTrigger.value++
+                        }
                     }
-
                 }
 
                 
@@ -710,11 +733,17 @@ fun UtilesScreen(
 
 
 
-        val subId = activeSubscriptions.getOrNull(selectedSimIndex)?.subscriptionId ?: return@LaunchedEffect
+        val subId = activeSubscriptions.getOrNull(selectedSimIndex)?.subscriptionId
 
         val telephonyManagerBase = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
-        val specificTelephonyManager = telephonyManagerBase.createForSubscriptionId(subId)
+        val specificTelephonyManager = if (subId != null) {
+            telephonyManagerBase.createForSubscriptionId(subId)
+        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            telephonyManagerBase // Android 8/9: usar TelephonyManager por defecto
+        } else {
+            return@LaunchedEffect // Android 10+: sin subId no podemos continuar
+        }
 
 
 
@@ -859,63 +888,46 @@ fun UtilesScreen(
         } else {
 
             // Para versiones anteriores
-
-            val listener = object : PhoneStateListener() {
-
-                @Suppress("DEPRECATION")
-
-                override fun onCellInfoChanged(infoList: List<CellInfo>?) {
-
-                    cellInfoList = infoList ?: emptyList()
-
-                    updateTrigger.value++
-
+            @Suppress("DEPRECATION")
+            val listener = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                object : PhoneStateListener() {
+                    override fun onCellInfoChanged(infoList: List<CellInfo>?) {
+                        cellInfoList = infoList ?: emptyList()
+                        updateTrigger.value++
+                    }
+                    override fun onServiceStateChanged(state: ServiceState?) {
+                        serviceState = state
+                        updateTrigger.value++
+                    }
+                    override fun onDisplayInfoChanged(displayInfo: TelephonyDisplayInfo) {
+                        telephonyDisplayInfo = displayInfo
+                        updateTrigger.value++
+                    }
                 }
-
-
-
-                @Suppress("DEPRECATION")
-
-                override fun onServiceStateChanged(state: ServiceState?) {
-
-                    serviceState = state
-
-                    updateTrigger.value++
-
+            } else {
+                object : PhoneStateListener() {
+                    override fun onCellInfoChanged(infoList: List<CellInfo>?) {
+                        cellInfoList = infoList ?: emptyList()
+                        updateTrigger.value++
+                    }
+                    override fun onServiceStateChanged(state: ServiceState?) {
+                        serviceState = state
+                        updateTrigger.value++
+                    }
                 }
-
-
-
-                @Suppress("DEPRECATION")
-
-                override fun onDisplayInfoChanged(displayInfo: TelephonyDisplayInfo) {
-
-                    telephonyDisplayInfo = displayInfo
-
-                    updateTrigger.value++
-
-                }
-
             }
 
 
 
             @Suppress("DEPRECATION")
-
             val events = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-
-                PhoneStateListener.LISTEN_CELL_INFO or 
-
-                PhoneStateListener.LISTEN_SERVICE_STATE or 
-
+                PhoneStateListener.LISTEN_CELL_INFO or
+                PhoneStateListener.LISTEN_SERVICE_STATE or
                 PhoneStateListener.LISTEN_DISPLAY_INFO_CHANGED
-
             } else {
-
-                PhoneStateListener.LISTEN_CELL_INFO or 
-
+                // Android 10 y anteriores: LISTEN_DISPLAY_INFO_CHANGED no existe, NO incluirlo
+                PhoneStateListener.LISTEN_CELL_INFO or
                 PhoneStateListener.LISTEN_SERVICE_STATE
-
             }
 
             
@@ -1222,46 +1234,42 @@ fun UtilesScreen(
 
                     }
 
-                    Text(
-
-                        dynamicTitle ?: "",
-
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-
-                    )
-
+                    cu.cuban.cmcubano.components.ScreenTitlePill(title = dynamicTitle ?: "")
                 },
 
                 navigationIcon = {
-
-                    IconButton(onClick = {
-
-                        VibrationManager.vibrate(context)
-
-                        if (selectedTab == 2 && selectedPlanesCategory != null) {
-
-                            if (useNavForPlanesCategory) {
-
-                                navController.popBackStack()
-
+                    val isDark = isSystemInDarkTheme()
+                    Surface(
+                        modifier = Modifier
+                            .padding(start = 12.dp)
+                            .size(44.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 2.dp,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.3f else 0.6f)
+                        )
+                    ) {
+                        IconButton(onClick = {
+                            VibrationManager.vibrate(context)
+                            if (selectedTab == 2 && selectedPlanesCategory != null) {
+                                if (useNavForPlanesCategory) {
+                                    navController.popBackStack()
+                                } else {
+                                    selectedPlanesCategory = null
+                                }
                             } else {
-
-                                selectedPlanesCategory = null
-
+                                navController.popBackStack()
                             }
-
-                        } else {
-
-                            navController.popBackStack()
-
+                        }) {
+                            Icon(
+                                Icons.Default.ArrowBack,
+                                contentDescription = "Atrás",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
                         }
-
-                    }) {
-
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
-
                     }
-
                 },
 
                 actions = {
@@ -2392,6 +2400,26 @@ fun UtilesScreen(
 
         }
 
+        // Diálogo para mostrar respuestas USSD global
+        val ussdResponse by UssdManager.ussdResponse.collectAsState()
+        val isLoading by UssdManager.isLoading.collectAsState()
+        var showGlobalUssdDialog by remember { mutableStateOf(false) }
+        
+        LaunchedEffect(ussdResponse, isLoading) {
+            if (ussdResponse != null || isLoading) {
+                showGlobalUssdDialog = true
+            }
+        }
+        
+        if (showGlobalUssdDialog) {
+            UssdResponseDialog(
+                onDismiss = { 
+                    showGlobalUssdDialog = false
+                    UssdManager.clearResponse()
+                }
+            )
+        }
+
     }
 
 }
@@ -2566,6 +2594,8 @@ internal fun NSGMainPanelOptimized(
 
 
 
+
+
                 if (badgeText.isNotEmpty()) {
 
                     Surface(
@@ -2609,30 +2639,19 @@ internal fun NSGMainPanelOptimized(
                 "LTE" -> {
 
                     val eNB = mainCell.ciInt?.let { v -> (v / 256).toString() } ?: "-"
-
-                    val ciValue = mainCell.ciInt?.let { String.format("%08d", it) } ?: "-"
-
-
+                    val lcid = mainCell.ciInt?.let { v -> (v % 256).toString() } ?: "-"
 
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-
                         Row(modifier = Modifier.fillMaxWidth()) {
-
                             NSGParameterItem(
-
-                                "eNB", 
-
-                                eNB, 
-
+                                "eNB | CID", 
+                                if (eNB != "-" && lcid != "-") "$eNB | $lcid" else eNB, 
                                 Modifier.weight(1f),
-
                                 isEnbClickable = true,
-
                                 onEnbClick = { onEnbClick(eNB) }
-
                             )
 
-                            NSGParameterItem("Band | Frec", "${mainCell.band} | ${getLteFrequency(mainCell.earfcn.toIntOrNull() ?: 0)}", Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally)
+                            NSGParameterItem("EARFCN", mainCell.earfcn, Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally)
 
                             NSGParameterItem("PCI", mainCell.pci, Modifier.weight(1f), horizontalAlignment = Alignment.End)
 
@@ -2642,7 +2661,7 @@ internal fun NSGMainPanelOptimized(
 
                             NSGParameterItem("TAC", mainCell.tac ?: "-", Modifier.weight(1f), horizontalAlignment = Alignment.Start)
 
-                            NSGParameterItem("EARFCN", mainCell.earfcn, Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally)
+                            NSGParameterItem("Band | Frec", "${mainCell.band} | ${getLteFrequency(mainCell.earfcn.toIntOrNull() ?: 0)}", Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally)
 
                             NSGParameterItem("TA", mainCell.ta ?: "-", Modifier.weight(1f), horizontalAlignment = Alignment.End)
 
@@ -2962,6 +2981,26 @@ internal fun NSGMainPanelOptimized(
 
         }
 
+        // Diálogo para mostrar respuestas USSD global
+        val ussdResponse by UssdManager.ussdResponse.collectAsState()
+        val isLoading by UssdManager.isLoading.collectAsState()
+        var showGlobalUssdDialog by remember { mutableStateOf(false) }
+        
+        LaunchedEffect(ussdResponse, isLoading) {
+            if (ussdResponse != null || isLoading) {
+                showGlobalUssdDialog = true
+            }
+        }
+        
+        if (showGlobalUssdDialog) {
+            UssdResponseDialog(
+                onDismiss = { 
+                    showGlobalUssdDialog = false
+                    UssdManager.clearResponse()
+                }
+            )
+        }
+
     }
 
 }
@@ -3011,17 +3050,11 @@ fun NSGParameterItem(
                 text = value,
 
                 modifier = Modifier
-
                     .background(
-
                         color = MaterialTheme.colorScheme.primaryContainer,
-
-                        shape = RoundedCornerShape(8.dp)
-
+                        shape = RoundedCornerShape(6.dp)
                     )
-
-                    .padding(horizontal = 6.dp, vertical = 4.dp)
-
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
                     .clickable { onEnbClick() },
 
                 style = MaterialTheme.typography.bodyMedium,
@@ -3046,6 +3079,26 @@ fun NSGParameterItem(
 
             )
 
+        }
+
+        // Diálogo para mostrar respuestas USSD global
+        val ussdResponse by UssdManager.ussdResponse.collectAsState()
+        val isLoading by UssdManager.isLoading.collectAsState()
+        var showGlobalUssdDialog by remember { mutableStateOf(false) }
+        
+        LaunchedEffect(ussdResponse, isLoading) {
+            if (ussdResponse != null || isLoading) {
+                showGlobalUssdDialog = true
+            }
+        }
+        
+        if (showGlobalUssdDialog) {
+            UssdResponseDialog(
+                onDismiss = { 
+                    showGlobalUssdDialog = false
+                    UssdManager.clearResponse()
+                }
+            )
         }
 
     }
@@ -3304,6 +3357,26 @@ fun NSGQualityMiniBlockCompact(
 
             )
 
+        }
+
+        // Diálogo para mostrar respuestas USSD global
+        val ussdResponse by UssdManager.ussdResponse.collectAsState()
+        val isLoading by UssdManager.isLoading.collectAsState()
+        var showGlobalUssdDialog by remember { mutableStateOf(false) }
+        
+        LaunchedEffect(ussdResponse, isLoading) {
+            if (ussdResponse != null || isLoading) {
+                showGlobalUssdDialog = true
+            }
+        }
+        
+        if (showGlobalUssdDialog) {
+            UssdResponseDialog(
+                onDismiss = { 
+                    showGlobalUssdDialog = false
+                    UssdManager.clearResponse()
+                }
+            )
         }
 
     }
@@ -3782,6 +3855,26 @@ internal fun NSGCellTableOptimized(data: Triple<String, String, List<CellRow>>) 
 
         }
 
+        // Diálogo para mostrar respuestas USSD global
+        val ussdResponse by UssdManager.ussdResponse.collectAsState()
+        val isLoading by UssdManager.isLoading.collectAsState()
+        var showGlobalUssdDialog by remember { mutableStateOf(false) }
+        
+        LaunchedEffect(ussdResponse, isLoading) {
+            if (ussdResponse != null || isLoading) {
+                showGlobalUssdDialog = true
+            }
+        }
+        
+        if (showGlobalUssdDialog) {
+            UssdResponseDialog(
+                onDismiss = { 
+                    showGlobalUssdDialog = false
+                    UssdManager.clearResponse()
+                }
+            )
+        }
+
     }
 
 }
@@ -3952,21 +4045,25 @@ fun PlanesSection(
 
     }
 
+    // Estados para el diálogo de confirmación de compra
+    var showConfirmDialog by remember { mutableStateOf(false) }
+    var selectedPlan by remember { mutableStateOf<PlanItem?>(null) }
+
 
 
     val planesDatos = listOf(
 
-        PlanItem("2GB", "+15MIN+20SMS", "120 CUP", "*133*1*4*2#"),
+        PlanItem("2GB", "+15MIN+20SMS", "120 CUP", "*133*1*4*2*1#"),
 
-        PlanItem("4GB", "+35MIN+40SMS", "240 CUP", "*133*1*4*3#"),
+        PlanItem("4GB", "+35MIN+40SMS", "240 CUP", "*133*1*4*3*1#"),
 
-        PlanItem("6GB", "+60MIN+70SMS", "360 CUP", "*133*1*4*4#"),
+        PlanItem("6GB", "+60MIN+70SMS", "360 CUP", "*133*1*4*4*1#"),
 
-        PlanItem("4.5GB", null, "240 CUP", "*133*1*4*1#"),
+        PlanItem("4.5GB", null, "240 CUP", "*133*1*4*1*1#"),
 
-        PlanItem("ToDus 600MB", null, "25 CUP", "*133*1*2#"),
+        PlanItem("ToDus 1GB", null, "25 CUP", "*133*1*2*1#"),
 
-        PlanItem("Plan Diario 200MB", null, "25 CUP", "*133*1*3#")
+        PlanItem("Plan Diario 200MB", null, "25 CUP", "*133*1*3*1#")
 
     )
 
@@ -3974,15 +4071,15 @@ fun PlanesSection(
 
     val planesVoz = listOf(
 
-        PlanItem("5 MIN", null, "$37.5", "*133*3*1#", icono = Icons.Default.Phone),
+        PlanItem("5 MIN", null, "$37.5 CUP", "*133*3*1*1#", icono = Icons.Default.Phone),
 
-        PlanItem("10 MIN", null, "$72.5", "*133*3*2#", icono = Icons.Default.Phone),
+        PlanItem("10 MIN", null, "$72.5 CUP", "*133*3*2*1#", icono = Icons.Default.Phone),
 
-        PlanItem("15 MIN", null, "$105", "*133*3*3#", icono = Icons.Default.Phone),
+        PlanItem("15 MIN", null, "$105 CUP", "*133*3*3*1#", icono = Icons.Default.Phone),
 
-        PlanItem("25 MIN", null, "$162.5", "*133*3*4#", icono = Icons.Default.Phone),
+        PlanItem("25 MIN", null, "$162.5 CUP", "*133*3*4*1#", icono = Icons.Default.Phone),
 
-        PlanItem("40 MIN", null, "$250", "*133*3*5#", icono = Icons.Default.Phone)
+        PlanItem("40 MIN", null, "$250 CUP", "*133*3*5*1#", icono = Icons.Default.Phone)
 
     )
 
@@ -3990,13 +4087,13 @@ fun PlanesSection(
 
     val planesSms = listOf(
 
-        PlanItem("20 SMS", null, "$15", "*133*2*1#", icono = Icons.Default.Email),
+        PlanItem("20 SMS", null, "$15 CUP", "*133*2*1*1#", icono = Icons.Default.Email),
 
-        PlanItem("50 SMS", null, "$30", "*133*2*2#", icono = Icons.Default.Email),
+        PlanItem("50 SMS", null, "$30 CUP", "*133*2*2*1#", icono = Icons.Default.Email),
 
-        PlanItem("90 SMS", null, "$50", "*133*2*3#", icono = Icons.Default.Email),
+        PlanItem("90 SMS", null, "$50 CUP", "*133*2*3*1#", icono = Icons.Default.Email),
 
-        PlanItem("120 SMS", null, "$60", "*133*2*4#", icono = Icons.Default.Email)
+        PlanItem("120 SMS", null, "$60 CUP", "*133*2*4*1#", icono = Icons.Default.Email)
 
     )
 
@@ -4318,17 +4415,9 @@ fun PlanesSection(
 
                                         } else {
 
-                                            if (ContextCompat.checkSelfPermission(context, callPhonePermission) == PackageManager.PERMISSION_GRANTED) {
-
-                                                makeUssdCall(context, plan.ussd, selectedSubscription)
-
-                                            } else {
-
-                                                pendingUssd = plan.ussd
-
-                                                permissionLauncher.launch(callPhonePermission)
-
-                                            }
+                                            // Mostrar diálogo de confirmación para comprar plan
+                                            selectedPlan = plan
+                                            showConfirmDialog = true
 
                                         }
 
@@ -4416,6 +4505,141 @@ fun PlanesSection(
 
             }
 
+        }
+
+        // Diálogo para mostrar respuestas USSD global
+        val ussdResponse by UssdManager.ussdResponse.collectAsState()
+        val isLoading by UssdManager.isLoading.collectAsState()
+        var showGlobalUssdDialog by remember { mutableStateOf(false) }
+
+        LaunchedEffect(ussdResponse, isLoading) {
+            if (ussdResponse != null || isLoading) {
+                showGlobalUssdDialog = true
+            }
+        }
+
+        if (showGlobalUssdDialog) {
+            UssdResponseDialog(
+                onDismiss = {
+                    showGlobalUssdDialog = false
+                    UssdManager.clearResponse()
+                }
+            )
+        }
+
+        // Diálogo de confirmación para comprar planes
+        if (showConfirmDialog && selectedPlan != null) {
+            Dialog(
+                onDismissRequest = {
+                    showConfirmDialog = false
+                    selectedPlan = null
+                },
+                properties = DialogProperties(
+                    dismissOnBackPress = true,
+                    dismissOnClickOutside = true,
+                    usePlatformDefaultWidth = false
+                )
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .wrapContentHeight(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 6.dp
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Icono
+                        Icon(
+                            imageVector = Icons.Default.ShoppingCart,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(48.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Título
+                        Text(
+                            text = "CONFIRMAR COMPRA",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Texto del plan
+                        val plan = selectedPlan
+                        val planDetails = if (!plan?.subtitle.isNullOrEmpty()) {
+                            "${plan?.title} ${plan?.subtitle}"
+                        } else {
+                            plan?.title ?: ""
+                        }
+                        Text(
+                            text = "Confirme que desea comprar el plan $planDetails por ${plan?.price ?: ""}.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        // Botones en fila
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    showConfirmDialog = false
+                                    selectedPlan = null
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = "Cancelar",
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            Button(
+                                onClick = {
+                                    VibrationManager.vibrate(context)
+                                    showConfirmDialog = false
+                                    selectedPlan?.let { plan ->
+                                        // Obtener el índice de la SIM seleccionada para dual SIM
+                                        val simIndex = selectedSubscription?.let { subscription ->
+                                            val subscriptionManager = context.getSystemService(android.telephony.SubscriptionManager::class.java)
+                                            val activeSubscriptions = subscriptionManager?.activeSubscriptionInfoList ?: emptyList()
+                                            activeSubscriptions.indexOf(subscription)
+                                        } ?: -1
+
+                                        UssdManager.sendUssdRequest(context, plan.ussd, simIndex)
+                                    }
+                                    selectedPlan = null
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = "Aceptar",
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
 
     }
@@ -4572,6 +4796,26 @@ fun CategoryCard(
 
         }
 
+        // Diálogo para mostrar respuestas USSD global
+        val ussdResponse by UssdManager.ussdResponse.collectAsState()
+        val isLoading by UssdManager.isLoading.collectAsState()
+        var showGlobalUssdDialog by remember { mutableStateOf(false) }
+        
+        LaunchedEffect(ussdResponse, isLoading) {
+            if (ussdResponse != null || isLoading) {
+                showGlobalUssdDialog = true
+            }
+        }
+        
+        if (showGlobalUssdDialog) {
+            UssdResponseDialog(
+                onDismiss = { 
+                    showGlobalUssdDialog = false
+                    UssdManager.clearResponse()
+                }
+            )
+        }
+
     }
 
 }
@@ -4581,30 +4825,6 @@ fun CategoryCard(
 @Composable
 
 fun ConsultaSection(context: Context, selectedSubscription: SubscriptionInfo?) {
-
-    val callPhonePermission = Manifest.permission.CALL_PHONE
-
-    var pendingUssd by remember { mutableStateOf<String?>(null) }
-
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-
-        if (isGranted) {
-
-            pendingUssd?.let { ussd ->
-
-                makeUssdCall(context, ussd, selectedSubscription)
-
-                pendingUssd = null
-
-            }
-
-        } else {
-
-            pendingUssd = null
-
-        }
-
-    }
 
     val consultas = listOf(
 
@@ -4769,18 +4989,15 @@ fun ConsultaSection(context: Context, selectedSubscription: SubscriptionInfo?) {
                             onClick = {
 
                                 VibrationManager.vibrate(context)
-
-                                if (ContextCompat.checkSelfPermission(context, callPhonePermission) == PackageManager.PERMISSION_GRANTED) {
-
-                                    makeUssdCall(context, consulta.ussd, selectedSubscription)
-
-                                } else {
-
-                                    pendingUssd = consulta.ussd
-
-                                    permissionLauncher.launch(callPhonePermission)
-
-                                }
+                                
+                                // Obtener el índice de la SIM seleccionada para dual SIM
+                                val simIndex = selectedSubscription?.let { subscription ->
+                                    val subscriptionManager = context.getSystemService(android.telephony.SubscriptionManager::class.java)
+                                    val activeSubscriptions = subscriptionManager?.activeSubscriptionInfoList ?: emptyList()
+                                    activeSubscriptions.indexOf(subscription)
+                                } ?: -1
+                                
+                                UssdManager.sendUssdRequest(context, consulta.ussd, simIndex)
 
                             },
 
@@ -5014,7 +5231,7 @@ fun TransferenciaSection(selectedSubscription: SubscriptionInfo?) {
 
         ) {
 
-            // Sección de Destinatario
+            // Sección de Número receptor
 
             OutlinedTextField(
 
@@ -5034,7 +5251,7 @@ fun TransferenciaSection(selectedSubscription: SubscriptionInfo?) {
 
                 modifier = Modifier.fillMaxWidth(),
 
-                label = { Text("Destinatario") },
+                label = { Text("Número receptor") },
 
                 leadingIcon = {
 
@@ -5108,105 +5325,93 @@ fun TransferenciaSection(selectedSubscription: SubscriptionInfo?) {
 
 
 
-            // PIN y Monto en fila
+            // Campo PIN
 
-            Row(
+            OutlinedTextField(
+
+                value = contraseña,
+
+                onValueChange = {
+
+                    if (it.length <= 4 && it.all { it.isDigit() }) {
+
+                        contraseña = it
+
+                        pinError = false
+
+                    }
+
+                },
 
                 modifier = Modifier.fillMaxWidth(),
 
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                label = { Text("PIN") },
 
-            ) {
+                leadingIcon = { Icon(Icons.Default.Lock, null, modifier = Modifier.size(18.dp)) },
 
-                // Campo PIN
+                visualTransformation = PasswordVisualTransformation(),
 
-                OutlinedTextField(
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
 
-                    value = contraseña,
+                singleLine = true,
 
-                    onValueChange = {
+                isError = pinError,
 
-                        if (it.length <= 4 && it.all { it.isDigit() }) {
+                shape = RoundedCornerShape(16.dp),
 
-                            contraseña = it
+                colors = OutlinedTextFieldDefaults.colors(
 
-                            pinError = false
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
 
-                        }
-
-                    },
-
-                    label = { Text("PIN") },
-
-                    leadingIcon = { Icon(Icons.Default.Lock, null, modifier = Modifier.size(18.dp)) },
-
-                    visualTransformation = PasswordVisualTransformation(),
-
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-
-                    singleLine = true,
-
-                    isError = pinError,
-
-                    modifier = Modifier.weight(1f),
-
-                    shape = RoundedCornerShape(16.dp),
-
-                    colors = OutlinedTextFieldDefaults.colors(
-
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
-
-                    )
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
 
                 )
 
+            )
 
 
-                // Campo Monto
 
-                OutlinedTextField(
+            // Campo Importe en CUP
 
-                    value = monto,
+            OutlinedTextField(
 
-                    onValueChange = {
+                value = monto,
 
-                        if (it.all { char -> char.isDigit() }) {
+                onValueChange = {
 
-                            monto = it
+                    if (it.all { char -> char.isDigit() }) {
 
-                            montoError = false
+                        monto = it
 
-                        }
+                        montoError = false
 
-                    },
+                    }
 
-                    label = { Text("Monto") },
+                },
 
-                    leadingIcon = { Icon(Icons.Default.Payments, null, modifier = Modifier.size(18.dp)) },
+                modifier = Modifier.fillMaxWidth(),
 
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                label = { Text("Importe en CUP") },
 
-                    singleLine = true,
+                leadingIcon = { Icon(Icons.Default.Payments, null, modifier = Modifier.size(18.dp)) },
 
-                    isError = montoError,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
 
-                    modifier = Modifier.weight(1f),
+                singleLine = true,
 
-                    shape = RoundedCornerShape(16.dp),
+                isError = montoError,
 
-                    colors = OutlinedTextFieldDefaults.colors(
+                shape = RoundedCornerShape(16.dp),
 
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                colors = OutlinedTextFieldDefaults.colors(
 
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
 
-                    )
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
 
                 )
 
-            }
+            )
 
 
 
@@ -5214,80 +5419,158 @@ fun TransferenciaSection(selectedSubscription: SubscriptionInfo?) {
 
 
 
-            // Botón Transferir con degradado o estilo premium
+            // Botones Cancelar y Continuar
 
-            Button(
+            Row(
 
-                onClick = {
+                modifier = Modifier.fillMaxWidth(),
 
-                    VibrationManager.vibrate(context)
-
-                    numeroError = destinatario.isBlank() || destinatario.length < 8
-
-                    pinError = contraseña.isBlank()
-
-                    montoError = monto.isBlank()
-
-                    if (numeroError || pinError || montoError) return@Button
-
-
-
-                    val ussd = "*234*1*$destinatario*$contraseña*$monto#"
-
-                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE)
-
-                        == PackageManager.PERMISSION_GRANTED
-
-                    ) {
-
-                        makeUssdCall(context, ussd, selectedSubscription)
-
-                    } else {
-
-                        pendingUssd = ussd
-
-                        permissionCallLauncher.launch(Manifest.permission.CALL_PHONE)
-
-                    }
-
-                },
-
-                modifier = Modifier
-
-                    .fillMaxWidth()
-
-                    .height(56.dp)
-
-                    .shadow(8.dp, RoundedCornerShape(16.dp), spotColor = MaterialTheme.colorScheme.primary),
-
-                shape = RoundedCornerShape(16.dp),
-
-                colors = ButtonDefaults.buttonColors(
-
-                    containerColor = MaterialTheme.colorScheme.primary
-
-                ),
-
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
 
             ) {
 
-                Icon(Icons.Default.Send, null, modifier = Modifier.size(20.dp))
+                // Botón Cancelar
 
-                Spacer(modifier = Modifier.width(12.dp))
+                OutlinedButton(
 
-                Text(
+                    onClick = {
 
-                    "Transferir",
+                        destinatario = ""
 
-                    style = MaterialTheme.typography.titleMedium,
+                        contraseña = ""
 
-                    fontWeight = FontWeight.ExtraBold
+                        monto = ""
 
-                )
+                        numeroError = false
+
+                        pinError = false
+
+                        montoError = false
+
+                    },
+
+                    modifier = Modifier
+
+                        .weight(1f)
+
+                        .height(56.dp),
+
+                    shape = RoundedCornerShape(16.dp),
+
+                    colors = ButtonDefaults.outlinedButtonColors(
+
+                        contentColor = MaterialTheme.colorScheme.onSurface
+
+                    )
+
+                ) {
+
+                    Text(
+
+                        "Cancelar",
+
+                        style = MaterialTheme.typography.titleMedium,
+
+                        fontWeight = FontWeight.SemiBold
+
+                    )
+
+                }
+
+
+
+                // Botón Continuar
+
+                Button(
+
+                    onClick = {
+
+                        VibrationManager.vibrate(context)
+
+                        numeroError = destinatario.isBlank() || destinatario.length < 8
+
+                        pinError = contraseña.isBlank()
+
+                        montoError = monto.isBlank()
+
+                        if (numeroError || pinError || montoError) return@Button
+
+
+
+                        val ussd = "*234*1*$destinatario*$contraseña*$monto#"
+
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE)
+
+                            == PackageManager.PERMISSION_GRANTED
+
+                        ) {
+
+                            makeUssdCall(context, ussd, selectedSubscription)
+
+                        } else {
+
+                            pendingUssd = ussd
+
+                            permissionCallLauncher.launch(Manifest.permission.CALL_PHONE)
+
+                        }
+
+                    },
+
+                    modifier = Modifier
+
+                        .weight(1f)
+
+                        .height(56.dp)
+
+                        .shadow(8.dp, RoundedCornerShape(16.dp), spotColor = MaterialTheme.colorScheme.primary),
+
+                    shape = RoundedCornerShape(16.dp),
+
+                    colors = ButtonDefaults.buttonColors(
+
+                        containerColor = MaterialTheme.colorScheme.primary
+
+                    ),
+
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+
+                ) {
+
+                    Text(
+
+                        "Continuar",
+
+                        style = MaterialTheme.typography.titleMedium,
+
+                        fontWeight = FontWeight.ExtraBold
+
+                    )
+
+                }
 
             }
 
+        }
+
+        // Diálogo para mostrar respuestas USSD global
+        val ussdResponse by UssdManager.ussdResponse.collectAsState()
+        val isLoading by UssdManager.isLoading.collectAsState()
+        var showGlobalUssdDialog by remember { mutableStateOf(false) }
+        
+        LaunchedEffect(ussdResponse, isLoading) {
+            if (ussdResponse != null || isLoading) {
+                showGlobalUssdDialog = true
+            }
+        }
+        
+        if (showGlobalUssdDialog) {
+            UssdResponseDialog(
+                onDismiss = { 
+                    showGlobalUssdDialog = false
+                    UssdManager.clearResponse()
+                }
+            )
         }
 
     }
@@ -5357,14 +5640,10 @@ internal data class BwComponent(
 // Modifica getCellRows para formatear los valores con un decimal y eNB con 6 dígitos
 
 private fun getCellRows(
-
     cellInfoList: List<CellInfo>, 
-
     serviceState: ServiceState?,
-
-    displayInfo: TelephonyDisplayInfo?,
-
-    physicalConfigList: List<PhysicalChannelConfig>,
+    displayInfo: Any?, // Cambiado de TelephonyDisplayInfo? para evitar crash en API < 30
+    physicalConfigList: List<Any>, // Cambiado de List<PhysicalChannelConfig>
 
     taCache: MutableMap<String, String>,
 
@@ -5453,11 +5732,13 @@ private fun getCellRows(
             // 1. Usar DisplayInfo para detección instantánea del estado lógico de CA (LTE+)
 
             val isDisplayCa = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && displayInfo != null) {
-
-                displayInfo.overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_CA ||
-
-                displayInfo.overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO
-
+                try {
+                    val di = displayInfo as android.telephony.TelephonyDisplayInfo
+                    di.overrideNetworkType == 1 || // OVERRIDE_NETWORK_TYPE_LTE_CA
+                    di.overrideNetworkType == 2    // OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO
+                } catch (e: Exception) {
+                    false
+                }
             } else false
 
 
@@ -5481,78 +5762,45 @@ private fun getCellRows(
 
 
             // FILTRADO MEJORADO: Solo contar PhysicalChannelConfigs que estén ACTIVOS
-
-            val activePhysicalConfigs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-
-                physicalConfigList.filter { config ->
-
-                    // Verificar que tenga datos válidos (banda, PCI o EARFCN)
-
-                    val hasValidBand = config.band in 1..88
+            val activePhysicalConfigs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                physicalConfigList.filter { configObj ->
+                    val config = configObj as? android.telephony.PhysicalChannelConfig ?: return@filter false
+                    
+                    val hasValidBand = try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            val band = config.band
+                            band in 1..88
+                        } else false
+                    } catch (e: Exception) { false }
 
                     val hasValidPci = try {
-
-                        val pci = config.physicalCellId
-
-                        pci >= 0 && pci < 504
-
-                    } catch (e: Exception) {
-
-                        false
-
-                    }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            val pci = config.physicalCellId
+                            pci >= 0 && pci < 504
+                        } else false
+                    } catch (e: Exception) { false }
 
                     val hasValidEarfcn = try {
-
-                        val earfcn = config.downlinkChannelNumber
-
-                        earfcn > 0 && earfcn != Int.MAX_VALUE
-
-                    } catch (e: Exception) {
-
-                        false
-
-                    }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            val earfcn = config.downlinkChannelNumber
+                            earfcn > 0 && earfcn != Int.MAX_VALUE
+                        } else false
+                    } catch (e: Exception) { false }
 
                     val hasValidData = hasValidBand || hasValidPci || hasValidEarfcn
 
-                    
-
                     // Verificar estado de conexión (Android 12+)
-
                     val isActive = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-
                         try {
-
                             // CONNECTION_STATUS_PRIMARY_SERVING = 1
-
                             // CONNECTION_STATUS_SECONDARY_SERVING = 2
-
                             config.connectionStatus == 1 || config.connectionStatus == 2
-
-                        } catch (e: Exception) {
-
-                            true // Si no podemos leer el estado, asumimos que está activo
-
-                        }
-
-                    } else {
-
-                        true // En versiones antiguas, asumimos que todos los configs reportados están activos
-
-                    }
-
+                        } catch (e: Exception) { true }
+                    } else true
                     
-
                     hasValidData && isActive
-
                 }
-
-            } else {
-
-                emptyList()
-
-            }
+            } else emptyList()
 
 
 
@@ -5640,13 +5888,20 @@ private fun getCellRows(
 
             if (activePhysicalConfigs.isNotEmpty()) {
 
-                val configsToProcess = if (isDataEnabled) activePhysicalConfigs else activePhysicalConfigs.take(1)
+                val shouldShowExtendedInfo = badgeText != "LTE"
+                val configsToProcess = if (isDataEnabled && shouldShowExtendedInfo) activePhysicalConfigs else activePhysicalConfigs.take(1)
 
 
 
-                configsToProcess.forEachIndexed { index, config ->
-
-                    val bwKhz = config.cellBandwidthDownlinkKhz
+                configsToProcess.forEachIndexed { index, configObj ->
+                    val config = configObj as? android.telephony.PhysicalChannelConfig ?: return@forEachIndexed
+                    
+                    var bwKhz = 0
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                           bwKhz = config.cellBandwidthDownlinkKhz
+                        }
+                    } catch (e: Exception) { }
 
                     if (bwKhz > 0 && bwKhz != Int.MAX_VALUE) {
 
@@ -5664,13 +5919,13 @@ private fun getCellRows(
 
                         try {
 
-                            pciFromConfig = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
 
                                 val pci = config.physicalCellId
 
-                                if (pci != Int.MAX_VALUE && pci >= 0) pci else null
+                                pciFromConfig = if (pci != Int.MAX_VALUE && pci >= 0) pci else null
 
-                            } else null
+                            }
 
                         } catch (e: Exception) {
 
@@ -5684,21 +5939,13 @@ private fun getCellRows(
 
                         try {
 
-                            earfcnFromConfig = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
 
-                                try {
+                                val channelNum = config.downlinkChannelNumber
 
-                                    val channelNum = config.downlinkChannelNumber
+                                earfcnFromConfig = if (channelNum > 0 && channelNum != Int.MAX_VALUE) channelNum else null
 
-                                    if (channelNum > 0 && channelNum != Int.MAX_VALUE) channelNum else null
-
-                                } catch (e: Exception) {
-
-                                    null
-
-                                }
-
-                            } else null
+                            }
 
                         } catch (e: Exception) {
 
@@ -5710,11 +5957,19 @@ private fun getCellRows(
 
                         // MÉTODO 1: config.band directo
 
-                        if (config.band in 1..88) {
+                        try {
 
-                            bandNum = config.band
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
 
-                        }
+                                if (config.band in 1..88) {
+
+                                    bandNum = config.band
+
+                                }
+
+                            }
+
+                        } catch (e: Exception) { }
 
 
 
@@ -5909,8 +6164,8 @@ private fun getCellRows(
             } else if (bandwidths.isNotEmpty()) {
 
                 // Fallback para Android antiguo
-
-                val bwsToProcess = if (isDataEnabled) bandwidths.toList() else bandwidths.take(1)
+                val shouldShowExtendedInfo = badgeText != "LTE"
+                val bwsToProcess = if (isDataEnabled && shouldShowExtendedInfo) bandwidths.toList() else bandwidths.take(1)
 
 
 
@@ -6315,8 +6570,7 @@ private fun getCellRows(
 
 
             // Post-proceso para marcar las celdas CA (solo si hay evidencia de agregación activa y datos activados)
-
-            if (isDataEnabled) {
+            if (isDataEnabled && badgeText != "LTE") {
 
                 val actualCaCount = when {
 
@@ -6868,94 +7122,54 @@ private fun getWcdmaFrequency(uarfcn: Int): String {
 
 
 
-private fun get3GNetworkType(displayInfo: TelephonyDisplayInfo?): String {
-
+private fun get3GNetworkType(displayInfo: Any?): String {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && displayInfo != null) {
-
+        val di = displayInfo as? android.telephony.TelephonyDisplayInfo ?: return "WCDMA"
         // Check override network types first (for LTE/5G)
-
-        when (displayInfo.overrideNetworkType) {
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA -> return "5G NSA"
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE -> return "5G+"
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_CA -> return "LTE+"
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO -> return "LTE Pro"
-
+        when (di.overrideNetworkType) {
+            3 -> return "5G NSA" // OVERRIDE_NETWORK_TYPE_NR_NSA
+            4 -> return "5G+" // OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE
+            1 -> return "LTE+" // OVERRIDE_NETWORK_TYPE_LTE_CA
+            2 -> return "LTE Pro" // OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO
         }
-
         
-
         // For 3G networks, use the network type to determine specific technology
-
-        return when (displayInfo.networkType) {
-
+        return when (di.networkType) {
             TelephonyManager.NETWORK_TYPE_HSDPA -> "HSDPA"
-
             TelephonyManager.NETWORK_TYPE_HSUPA -> "HSUPA"
-
             TelephonyManager.NETWORK_TYPE_HSPA -> "HSPA"
-
             TelephonyManager.NETWORK_TYPE_HSPAP -> "HSPA+"
-
             TelephonyManager.NETWORK_TYPE_UMTS -> "WCDMA"
-
             else -> "WCDMA"
-
         }
-
     }
-
     return "WCDMA"
-
 }
 
 
 
-private fun get2GNetworkType(displayInfo: TelephonyDisplayInfo?): String {
-
+private fun get2GNetworkType(displayInfo: Any?): String {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && displayInfo != null) {
-
+        val di = displayInfo as? android.telephony.TelephonyDisplayInfo ?: return "GPRS"
         // Check override network types first (for LTE/5G)
-
-        when (displayInfo.overrideNetworkType) {
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA -> return "5G NSA"
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE -> return "5G+"
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_CA -> return "LTE+"
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO -> return "LTE Pro"
-
+        when (di.overrideNetworkType) {
+            3 -> return "5G NSA" // OVERRIDE_NETWORK_TYPE_NR_NSA
+            4 -> return "5G+" // OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE
+            1 -> return "LTE+" // OVERRIDE_NETWORK_TYPE_LTE_CA
+            2 -> return "LTE Pro" // OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO
         }
-
         
-
         // For 2G networks, use the network type to determine specific technology
-
-        return when (displayInfo.networkType) {
-
+        return when (di.networkType) {
             TelephonyManager.NETWORK_TYPE_EDGE -> "EDGE"
-
             TelephonyManager.NETWORK_TYPE_GPRS -> "GPRS"
-
-            TelephonyManager.NETWORK_TYPE_GSM -> "GSM"
-
             TelephonyManager.NETWORK_TYPE_CDMA -> "CDMA"
-
             TelephonyManager.NETWORK_TYPE_1xRTT -> "1xRTT"
-
+            TelephonyManager.NETWORK_TYPE_IDEN -> "iDEN"
             else -> "GSM"
-
         }
-
     }
-
     return "GSM"
-
 }
 
 private fun getGsmBand(arfcn: Int): String {

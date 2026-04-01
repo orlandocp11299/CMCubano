@@ -2,6 +2,7 @@ package cu.cuban.cmcubano.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -16,6 +17,8 @@ import androidx.compose.ui.unit.sp
 
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 
@@ -27,10 +30,10 @@ import androidx.compose.foundation.shape.CircleShape
 
 import androidx.compose.ui.graphics.vector.ImageVector
 
-
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import kotlin.math.cos
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.painterResource
 import cu.cuban.cmcubano.R
@@ -40,6 +43,7 @@ import androidx.navigation.NavController
 import androidx.compose.foundation.isSystemInDarkTheme
 import android.provider.Settings
 import cu.cuban.cmcubano.utils.PremiumManager
+import cu.cuban.cmcubano.utils.GoldenParticlesBackground
 import cu.cuban.cmcubano.DataPlanWidgetProvider
 import cu.cuban.cmcubano.DataUsageWidgetProvider
 import android.content.Context
@@ -69,6 +73,16 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import cu.cuban.cmcubano.utils.SupabaseManager
+import cu.cuban.cmcubano.models.AppUpdate
+import io.github.jan.supabase.postgrest.from
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import androidx.compose.runtime.rememberCoroutineScope
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -79,6 +93,52 @@ fun AjustesScreen(navController: NavController) {
     var showDonacionesDialog by remember { mutableStateOf(false) }
     
     val context = LocalContext.current
+
+    val scope = rememberCoroutineScope()
+    var updateCheckState by remember { mutableStateOf<UpdateCheckState>(UpdateCheckState.Idle) }
+    var foundUpdateManual by remember { mutableStateOf<AppUpdate?>(null) }
+
+    fun isNetworkAvailable(context: Context): Boolean {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork ?: return false
+        val activeNetwork = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return when {
+            activeNetwork.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> true
+            activeNetwork.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> true
+            activeNetwork.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> true
+            else -> false
+        }
+    }
+
+    suspend fun checkManualUpdates() {
+        if (!isNetworkAvailable(context)) {
+            updateCheckState = UpdateCheckState.NoInternet
+            return
+        }
+
+        updateCheckState = UpdateCheckState.Checking
+        try {
+            val latestUpdate = withContext(Dispatchers.IO) {
+                SupabaseManager.client.from("app_updates")
+                    .select {
+                        order("version_code", order = io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                        limit(1)
+                    }.decodeSingleOrNull<AppUpdate>()
+            }
+
+            // Pequeño delay artificial para que la animación se vea bien si la red es muy rápida
+            delay(1200)
+
+            if (latestUpdate != null && latestUpdate.versionCode > BuildConfig.VERSION_CODE) {
+                foundUpdateManual = latestUpdate
+                updateCheckState = UpdateCheckState.Idle
+            } else {
+                updateCheckState = UpdateCheckState.UpToDate
+            }
+        } catch (e: Exception) {
+            updateCheckState = UpdateCheckState.Error("Error al conectar con el servidor: ${e.localizedMessage}")
+        }
+    }
     val prefs = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) }
     val isDarkMode = isSystemInDarkTheme()
 
@@ -110,17 +170,32 @@ fun AjustesScreen(navController: NavController) {
         topBar = {
             CenterAlignedTopAppBar(
                 title = { 
-                    Text(
-                        "Configuración",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    ) 
+                    cu.cuban.cmcubano.components.ScreenTitlePill(title = "Configuración")
                 },
                 navigationIcon = {
-                    IconButton(onClick = { 
-                        VibrationManager.vibrate(context)
-                        navController.popBackStack() 
-                    }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                    val isDark = isSystemInDarkTheme()
+                    Surface(
+                        modifier = Modifier
+                            .padding(start = 12.dp)
+                            .size(44.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 2.dp,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.3f else 0.6f)
+                        )
+                    ) {
+                        IconButton(onClick = {
+                            VibrationManager.vibrate(context)
+                            navController.popBackStack()
+                        }) {
+                            Icon(
+                                Icons.Default.ArrowBack,
+                                contentDescription = "Atrás",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -165,161 +240,166 @@ fun AjustesScreen(navController: NavController) {
                 ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-
-
-
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = if (isPremium.value) Icons.Default.Star else Icons.Default.WorkspacePremium,
-                            contentDescription = null,
-                            tint = if (isPremium.value) Color(0xFFFFA000) else MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (isPremium.value) "Premium Activo" else "Activar Premium",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isPremium.value) Color(0xFFFFA000) else MaterialTheme.colorScheme.onSecondaryContainer,
-                            fontSize = 16.sp
-                        )
-                        if (isPremium.value) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Icon(
-                                imageVector = Icons.Default.Star,
-                                contentDescription = null,
-                                tint = Color(0xFFFFA000),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                ) {
+                    if (isPremium.value) {
+                        GoldenParticlesBackground(modifier = Modifier.matchParentSize())
                     }
 
-                    
-                    if (!isPremium.value) {
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        OutlinedTextField(
-                            value = premiumCode,
-                            onValueChange = { premiumCode = it },
-                            label = { Text("Código de activación", fontSize = 12.sp) },
-                            modifier = Modifier.fillMaxWidth().height(120.dp),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                            singleLine = false,
-                            maxLines = 5,
-                            isError = errorMessage.isNotEmpty(),
-                            textStyle = MaterialTheme.typography.bodyMedium
-                        )
-
-                        if (errorMessage.isNotEmpty()) {
-                            Text(
-                                text = errorMessage,
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(top = 2.dp)
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isPremium.value) Icons.Default.Star else Icons.Default.WorkspacePremium,
+                                contentDescription = null,
+                                tint = if (isPremium.value) Color(0xFFFFA000) else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isPremium.value) "Premium Activo" else "Activar Premium",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isPremium.value) Color(0xFFFFA000) else MaterialTheme.colorScheme.onSecondaryContainer,
+                                fontSize = 16.sp
+                            )
+                            if (isPremium.value) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFFA000),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        if (!isPremium.value) {
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
+                            OutlinedTextField(
+                                value = premiumCode,
+                                onValueChange = { premiumCode = it },
+                                label = { Text("Código de activación", fontSize = 12.sp) },
+                                modifier = Modifier.fillMaxWidth().height(120.dp),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                                singleLine = false,
+                                maxLines = 5,
+                                isError = errorMessage.isNotEmpty(),
+                                textStyle = MaterialTheme.typography.bodyMedium
+                            )
+
+                            if (errorMessage.isNotEmpty()) {
                                 Text(
-                                    text = "REF: $deviceReference",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary
+                                    text = errorMessage,
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(top = 2.dp)
                                 )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "REF: $deviceReference",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+
+                                }
+                                Button(
+                                    onClick = {
+                                        VibrationManager.vibrate(context)
+                                        val message = "Solicito la activación premium de CM Cubano ($deviceReference)"
+                                        val url = "https://wa.me/5350576622?text=${Uri.encode(message)}"
+                                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                                            data = Uri.parse(url)
+                                        }
+                                        context.startActivity(intent)
+                                    },
+                                    modifier = Modifier.height(40.dp),
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF25D366) 
+                                    )
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_whatsapp),
+                                            contentDescription = "WhatsApp",
+                                            modifier = Modifier.size(24.dp),
+                                            tint = Color.Unspecified
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Obtener", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+                                }
+
 
                             }
+
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
                             Button(
                                 onClick = {
                                     VibrationManager.vibrate(context)
-                                    val message = "Solicito la activación premium de CM Cubano ($deviceReference)"
-                                    val url = "https://wa.me/5350576622?text=${Uri.encode(message)}"
-                                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                                        data = Uri.parse(url)
+                                    if (PremiumManager.validateAndActivate(context, premiumCode)) {
+                                        isPremium.value = true
+                                        errorMessage = ""
+                                        // Activar el recordatorio automáticamente al activar premium
+                                        context.getSharedPreferences("recordatorio_prefs", Context.MODE_PRIVATE)
+                                            .edit()
+                                            .putBoolean("recordatorio_enabled", true)
+                                            .apply()
+                                        
+                                        // Forzar actualización de widgets
+                                        val refreshPlan = Intent(context, DataPlanWidgetProvider::class.java).apply {
+                                            action = "cu.cuban.cmcubano.DATA_PLAN_REFRESH"
+                                        }
+                                        context.sendBroadcast(refreshPlan)
+                                        
+                                        val refreshUsage = Intent(context, DataUsageWidgetProvider::class.java).apply {
+                                            action = "cu.cuban.cmcubano.DATA_USAGE_REFRESH"
+                                        }
+                                        context.sendBroadcast(refreshUsage)
+                                    } else {
+                                        errorMessage = "Código incorrecto"
                                     }
-                                    context.startActivity(intent)
+
                                 },
-                                modifier = Modifier.height(40.dp),
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(40.dp),
+                                contentPadding = PaddingValues(0.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF25D366) 
+                                    containerColor = MaterialTheme.colorScheme.primary
                                 )
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        painter = painterResource(id = R.drawable.ic_whatsapp),
-                                        contentDescription = "WhatsApp",
-                                        modifier = Modifier.size(24.dp),
-                                        tint = Color.Unspecified
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Obtener", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                }
+                                Text("Comprobar", fontSize = 14.sp)
                             }
-
-
-                        }
-
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Button(
-                            onClick = {
-                                VibrationManager.vibrate(context)
-                                if (PremiumManager.validateAndActivate(context, premiumCode)) {
-                                    isPremium.value = true
-                                    errorMessage = ""
-                                    // Activar el recordatorio automáticamente al activar premium
-                                    context.getSharedPreferences("recordatorio_prefs", Context.MODE_PRIVATE)
-                                        .edit()
-                                        .putBoolean("recordatorio_enabled", true)
-                                        .apply()
-                                    
-                                    // Forzar actualización de widgets
-                                    val refreshPlan = Intent(context, DataPlanWidgetProvider::class.java).apply {
-                                        action = "cu.cuban.cmcubano.DATA_PLAN_REFRESH"
-                                    }
-                                    context.sendBroadcast(refreshPlan)
-                                    
-                                    val refreshUsage = Intent(context, DataUsageWidgetProvider::class.java).apply {
-                                        action = "cu.cuban.cmcubano.DATA_USAGE_REFRESH"
-                                    }
-                                    context.sendBroadcast(refreshUsage)
-                                } else {
-                                    errorMessage = "Código incorrecto"
-                                }
-
-                            },
-                            modifier = Modifier.fillMaxWidth().height(40.dp),
-                            contentPadding = PaddingValues(0.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
+                        } else {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Gracias por apoyar el desarrollo de CM Cubano. Todas las funciones premium están desbloqueadas.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
-                        ) {
-                            Text("Comprobar", fontSize = 14.sp)
                         }
-                    } else {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Gracias por apoyar el desarrollo de CM Cubano. Todas las funciones premium están desbloqueadas.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
                     }
                 }
             }
@@ -360,6 +440,55 @@ fun AjustesScreen(navController: NavController) {
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = "Ajustes de la app",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
+            // Tarjeta Unificada: Buscar actualizaciones
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                onClick = {
+                    VibrationManager.vibrate(context)
+                    scope.launch { checkManualUpdates() }
+                }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.04f)
+                                )
+                            )
+                        )
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Buscar actualizaciones",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -454,6 +583,13 @@ fun AjustesScreen(navController: NavController) {
                             VibrationManager.vibrate(context)
                             showAcercaDeDialog = true 
                         },
+                        onLongClick = {
+                            VibrationManager.vibrate(context)
+                            PremiumManager.deactivatePremium(context)
+                            isPremium.value = false
+                            premiumCode = ""
+                            Toast.makeText(context, "Premium desactivado", Toast.LENGTH_SHORT).show()
+                        },
                         modifier = Modifier.weight(1f)
                     )
                     // Donaciones
@@ -537,10 +673,10 @@ fun AjustesScreen(navController: NavController) {
                         onClick = {
                             VibrationManager.vibrate(context)
                             try {
-                                val telegramIntent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=CMCubano"))
+                                val telegramIntent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=CMCubano_APK"))
                                 context.startActivity(telegramIntent)
                             } catch (e: Exception) {
-                                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/CMCubano"))
+                                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/CMCubano_APK"))
                                 context.startActivity(webIntent)
                             }
                         },
@@ -619,10 +755,10 @@ fun AjustesScreen(navController: NavController) {
                             Button(
                                 onClick = {
                                     try {
-                                        val telegramIntent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=CMCubano_dev"))
+                                        val telegramIntent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=Orlan_2"))
                                         context.startActivity(telegramIntent)
                                     } catch (e: Exception) {
-                                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/CMCubano_dev"))
+                                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/Orlan_2"))
                                         context.startActivity(webIntent)
                                     }
                                 },
@@ -658,7 +794,59 @@ fun AjustesScreen(navController: NavController) {
             AlertDialog(
                 onDismissRequest = { showPrivacidadDialog = false },
                 title = { Text("Política de Privacidad") },
-                text = { Text("Esta aplicación no recopila informacion de ningun tipo, los permisos que se solicitan estan estrictamente pensados para el correcto funcionamiento de la aplicación.") },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Permisos de la App CMCubano", fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("📡 Permisos de Red", fontWeight = FontWeight.Bold)
+                        Text("• Internet y estado de red: Para obtener información de tu saldo, datos y noticias de ETECSA")
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("📱 Permisos del Teléfono", fontWeight = FontWeight.Bold)
+                        Text("• Información del teléfono: Para consultar tu saldo, planes y la compra de los mismos, además de mostrar tu tipo de red")
+                        Text("• Realizar llamadas: Para que puedas llamar al servicio al cliente directamente desde la app")
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("📍 Permisos de Ubicación", fontWeight = FontWeight.Bold)
+                        Text("• Ubicación: Para mostrar información de las torres de señal que estás usando y mejorar el monitoreo de la red")
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("💬 Permisos de SMS", fontWeight = FontWeight.Bold)
+                        Text("• Recibir y leer SMS: Para detectar cuando te llega un mensaje de ETECSA con tu recarga o plan de datos y activar recordatorios")
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("🔔 Permisos de Notificaciones", fontWeight = FontWeight.Bold)
+                        Text("• Notificaciones: Para avisarte sobre tu consumo de datos, recordatorios y alertas")
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("👥 Permisos de Contactos", fontWeight = FontWeight.Bold)
+                        Text("• Contactos: Para transferir saldo de forma más cómoda")
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("⚡ Permisos de Servicios en Segundo Plano", fontWeight = FontWeight.Bold)
+                        Text("• Iniciar al encender: Para que la app siga funcionando cuando reinicias el teléfono")
+                        Text("• Evitar optimización de batería: Para que los widgets y la burbuja de datos no se detengan")
+                        Text("• Vibración: Para avisos táctiles en notificaciones")
+                        Text("• Servicios en primer plano: Para monitorear tus datos mientras usas el teléfono")
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("🖥️ Permisos del Sistema", fontWeight = FontWeight.Bold)
+                        Text("• Ventana flotante: Para mostrar la burbuja de datos sobre otras aplicaciones")
+                        Text("• Estadísticas de uso: Para ver cuántos datos consume cada aplicación")
+                        Text("• Historial de red: Para controlar tu consumo de datos")
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("💾 Permisos de Almacenamiento", fontWeight = FontWeight.Bold)
+                        Text("• Fotos, videos y audio: Para importar o exportar tu lista de Radio Bases personalizadas")
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("🛡️ Permiso de Servicio VPN Local", fontWeight = FontWeight.Bold)
+                        Text("• VPN local (Cortafuegos): Permite crear una conexión VPN que se ejecuta 100% en tu dispositivo para interceptar y filtrar el tráfico de las aplicaciones, permitiendo que el cortafuegos bloquee o permita el acceso a datos e internet según tus preferencias sin enviar información a ningún servidor externo")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Lo más importante a saber:", fontWeight = FontWeight.Bold)
+                        Text("• La app NO envía tus datos personales ni tu tráfico a servidores de terceros")
+                        Text("• El servicio de VPN es estrictamente local en el dispositivo con fines de cortafuegos")
+                        Text("• Los permisos sensibles (SMS, ubicación, llamadas) se usan solo para las funciones descritas")
+                        Text("• La burbuja flotante y el monitoreo de datos requieren permisos especiales para funcionar correctamente")
+                        Text("• Todo el procesamiento se hace localmente en tu teléfono")
+                    }
+                },
                 confirmButton = {
                     TextButton(onClick = { showPrivacidadDialog = false }) {
                         Text("Aceptar")
@@ -672,7 +860,16 @@ fun AjustesScreen(navController: NavController) {
                 onDismissRequest = { showAcercaDeDialog = false },
                 title = { Text("Acerca de") },
                 text = { 
-                    Text("Versión: ${BuildConfig.VERSION_NAME}\nDesarrollador: Orlando\n\nCellMapper Cubano es una aplicación diseñada para la comunidad cubana interesada en el mapeo de redes móviles.")
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Versión: ${BuildConfig.VERSION_NAME}\nDesarrollador: Orlando", fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("CM Cubano es una aplicación diseñada principalmente para la comunidad de aficionados y entusiastas de las telecomunicaciones en Cuba, aunque también está pensada para cualquier usuario que desee aprovechar mejor los servicios de su línea móvil.\n\nCombina herramientas para gestionar los recursos de tu tarjeta SIM (datos móviles, SMS, saldo, transferencias y otros servicios de ETECSA) con funcionalidades avanzadas para consultar información sobre redes móviles, analizar parámetros de señal, identificar estaciones base y conocer mejor la infraestructura de telecomunicaciones.\n\nAdemás, integra recursos informativos y herramientas que convierten a CM Cubano en mucho más que una aplicación de gestión móvil: un espacio para aprender, explorar, gestionar e informarse sobre el mundo de las telecomunicaciones.\n\nCM Cubano: todo lo que necesitas para gestionar, descubrir y entender las telecomunicaciones en Cuba.")
+                    }
                 },
                 confirmButton = {
                     TextButton(onClick = { showAcercaDeDialog = false }) {
@@ -725,6 +922,19 @@ fun AjustesScreen(navController: NavController) {
             )
         }
 
+        // Diálogos de actualización manual
+        CheckUpdateDialog(
+            state = updateCheckState,
+            onDismiss = { updateCheckState = UpdateCheckState.Idle }
+        )
+
+        foundUpdateManual?.let { update ->
+            UpdateDialog(
+                update = update,
+                onDismissRequest = { foundUpdateManual = null }
+            )
+        }
+
     }
 }
 
@@ -758,17 +968,24 @@ fun CopyableDonationField(label: String, value: String, context: Context) {
 }
 
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AjustesSmallCard(
     icon: ImageVector,
     text: String,
     color: Color,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null
 ) {
     Card(
-        onClick = onClick,
-        modifier = modifier.height(100.dp),
+        modifier = modifier
+            .height(100.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         shape = RoundedCornerShape(20.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)

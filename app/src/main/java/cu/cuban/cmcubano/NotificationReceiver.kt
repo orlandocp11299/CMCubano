@@ -95,16 +95,58 @@ class NotificationReceiver : BroadcastReceiver() {
                     scheduleNextCheck(context)
                 }
             }
+
+            // Verificar Recarga 360 para ambas SIMs
+            checkRecharge360Availability(context)
         }
         
         if (intent.action == "SHOW_EXPIRATION_ALERT") {
             val title = intent.getStringExtra("title") ?: "ALERTA"
             val message = intent.getStringExtra("message") ?: "Tu Plan de Datos vence mañana."
             val notificationId = intent.getIntExtra("notification_id", 0)
-            
+
             Log.d(TAG, "Mostrando notificación - Título: $title, Mensaje: $message, ID: $notificationId")
-            
+
             showNotification(context, title, message, notificationId)
+        }
+
+        if (intent.action == "ACTION_RECHARGE_360_ALERT") {
+            val simIndex = intent.getIntExtra("sim_index", 0)
+            val simName = "SIM ${simIndex + 1}"
+            val title = "Recarga de 360 CUP"
+            val message = "$simName: Ya es posible recargar 360 CUP mediante Transfermóvil"
+            val notificationId = 3000 + simIndex
+
+            Log.d(TAG, "Mostrando notificación de Recarga 360 - Título: $title, Mensaje: $message, ID: $notificationId")
+
+            // Actualizar estado en SharedPreferences
+            val recharge360Prefs = context.getSharedPreferences("recharge360_prefs", Context.MODE_PRIVATE)
+            val statusKey = "sim${simIndex + 1}_status"
+            val dateKey = "sim${simIndex + 1}_date"
+            recharge360Prefs.edit()
+                .putString(statusKey, "Disponible")
+                .putString(dateKey, "Ahora")
+                .apply()
+            Log.d(TAG, "Estado actualizado en SharedPreferences: $statusKey = Disponible")
+
+            showNotification(context, title, message, notificationId)
+        }
+
+        if (intent.action == "ACTION_RECHARGE_360_IMMEDIATE") {
+            val simIndex = intent.getIntExtra("sim_index", 0)
+            val simName = "SIM ${simIndex + 1}"
+            val title = "Recarga de 360 CUP"
+            val message = "$simName: Ya es posible recargar 360 CUP mediante Transfermóvil"
+            val notificationId = 3000 + simIndex
+
+            Log.d(TAG, "Mostrando notificación inmediata de Recarga 360 - Título: $title, Mensaje: $message, ID: $notificationId")
+
+            showNotification(context, title, message, notificationId)
+        }
+
+        if (intent.action == "ACTION_RECHARGE_360_CHECK") {
+            Log.d(TAG, "Chequeo de Recarga 360 solicitado")
+            checkRecharge360Availability(context)
         }
     }
     
@@ -113,33 +155,44 @@ class NotificationReceiver : BroadcastReceiver() {
     }
     
     private fun showNotification(context: Context, title: String, message: String, notificationId: Int) {
-        Log.d(TAG, "Creando canal de notificación")
-        createNotificationChannel(context)
+        Log.d(TAG, "Preparando alerta: suspendiendo otros servicios")
         
-        // Verificar permisos de notificación
+        // 1. Suspender servicios de monitoreo para dejar el panel limpio
+        val suspendIntent = Intent(context, NotificationService::class.java).apply {
+            action = NotificationService.ACTION_SUSPEND_FOR_ALERT
+        }
+        context.startService(suspendIntent)
+
+        // 2. Preparar el intent para restaurar cuando la alerta sea descartada o pulsada
+        val restoreIntent = Intent(context, NotificationService::class.java).apply {
+            action = NotificationService.ACTION_RESUME_FROM_ALERT
+        }
+        val restorePendingIntent = android.app.PendingIntent.getService(
+            context, 100, restoreIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+
+        createNotificationChannel(context)
         val notificationManager = NotificationManagerCompat.from(context)
+        
         if (notificationManager.areNotificationsEnabled()) {
-            Log.d(TAG, "Permisos de notificación concedidos")
-            
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
                 .setContentTitle(title)
                 .setContentText(message)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setAutoCancel(true)
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setDeleteIntent(restorePendingIntent) // Restaurar si se desliza (descartar)
+                .setContentIntent(restorePendingIntent) // Restaurar si se toca
                 .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             
             try {
                 notificationManager.notify(notificationId, builder.build())
-                Log.d(TAG, "Notificación enviada exitosamente")
-            } catch (e: SecurityException) {
-                Log.e(TAG, "Error de seguridad al mostrar notificación: ${e.message}")
+                Log.d(TAG, "Alerta mostrada e hilos de red pausados")
             } catch (e: Exception) {
-                Log.e(TAG, "Error general al mostrar notificación: ${e.message}")
+                Log.e(TAG, "Error al mostrar notificación: ${e.message}")
             }
-        } else {
-            Log.w(TAG, "Permisos de notificación no concedidos")
         }
     }
     
@@ -153,10 +206,10 @@ class NotificationReceiver : BroadcastReceiver() {
                 enableLights(true)
                 enableVibration(true)
             }
-            
+
             val notificationManager: NotificationManager =
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            
+
             // Verificar si el canal ya existe
             val existingChannel = notificationManager.getNotificationChannel(CHANNEL_ID)
             if (existingChannel == null) {
@@ -164,6 +217,78 @@ class NotificationReceiver : BroadcastReceiver() {
                 notificationManager.createNotificationChannel(channel)
             } else {
                 Log.d(TAG, "Canal de notificación ya existe")
+            }
+        }
+    }
+
+    private fun checkRecharge360Availability(context: Context) {
+        val recharge360Prefs = context.getSharedPreferences("recharge360_prefs", Context.MODE_PRIVATE)
+        val isRecharge360Enabled = recharge360Prefs.getBoolean("recharge360_enabled", false)
+
+        if (!isRecharge360Enabled) {
+            Log.d(TAG, "Recarga 360 no está habilitado, omitiendo verificación")
+            return
+        }
+
+        // Verificar SIM 1
+        checkSimRecharge360(context, recharge360Prefs, 0)
+        // Verificar SIM 2
+        checkSimRecharge360(context, recharge360Prefs, 1)
+    }
+
+    private fun checkSimRecharge360(context: Context, prefs: android.content.SharedPreferences, simIndex: Int) {
+        val statusKey = "sim${simIndex + 1}_status"
+        val dateKey = "sim${simIndex + 1}_date"
+
+        val status = prefs.getString(statusKey, null)
+        val dateStr = prefs.getString(dateKey, null)
+
+        if (status == "Pendiente" && dateStr != null) {
+            try {
+                // Parsear fecha guardada (formato: dd-MM-yy)
+                val parts = dateStr.split("-")
+                if (parts.size == 3) {
+                    val day = parts[0].toInt()
+                    val month = parts[1].toInt() - 1 // Calendar months are 0-based
+                    val year = 2000 + parts[2].toInt()
+
+                    val targetCal = java.util.Calendar.getInstance().apply {
+                        set(year, month, day, 0, 0, 0)
+                        set(java.util.Calendar.MILLISECOND, 0)
+                    }
+
+                    val nowCal = java.util.Calendar.getInstance().apply {
+                        set(java.util.Calendar.HOUR_OF_DAY, 0)
+                        set(java.util.Calendar.MINUTE, 0)
+                        set(java.util.Calendar.SECOND, 0)
+                        set(java.util.Calendar.MILLISECOND, 0)
+                    }
+
+                    val diffInMillis = targetCal.timeInMillis - nowCal.timeInMillis
+                    val diffInDays = (diffInMillis / (24 * 60 * 60 * 1000)).toInt()
+
+                    Log.d(TAG, "SIM ${simIndex + 1} Recarga 360 - Fecha objetivo: $dateStr, Días restantes: $diffInDays")
+
+                    // Si la fecha ya pasó o es hoy, actualizar a Disponible
+                    if (diffInDays <= 0) {
+                        Log.d(TAG, "SIM ${simIndex + 1} Recarga 360 - Fecha alcanzada, actualizando a Disponible")
+
+                        prefs.edit()
+                            .putString(statusKey, "Disponible")
+                            .putString(dateKey, "Ahora")
+                            .apply()
+
+                        // Enviar notificación
+                        val simName = "SIM ${simIndex + 1}"
+                        val title = "Recarga de 360 CUP"
+                        val message = "$simName: Ya es posible recargar 360 CUP mediante Transfermóvil"
+                        val notificationId = 3000 + simIndex
+
+                        showNotification(context, title, message, notificationId)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error al verificar fecha de Recarga 360 SIM ${simIndex + 1}: ${e.message}")
             }
         }
     }

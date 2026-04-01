@@ -1,363 +1,719 @@
 package cu.cuban.cmcubano.screens
 
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
-import cu.cuban.cmcubano.utils.VibrationManager
 import androidx.navigation.NavController
+import cu.cuban.cmcubano.utils.SpeedTestHistoryManager
+import cu.cuban.cmcubano.utils.SpeedTestResult
+import cu.cuban.cmcubano.utils.VibrationManager
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.InputStream
-import java.io.OutputStream
-import java.net.HttpURLConnection
-import java.net.URL
+import com.fdossena.speedtest.core.Speedtest
+import com.fdossena.speedtest.core.config.SpeedtestConfig
+import com.fdossena.speedtest.core.serverSelector.TestPoint
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.pow
 import kotlin.math.sin
-import kotlin.math.sqrt
 
 enum class TestState {
-    IDLE, PINGING, DOWNLOADING, UPLOADING, FINISHED
+    IDLE, LOADING_SERVERS, SELECTING_SERVER, PINGING, DOWNLOADING, UPLOADING, FINISHED, ERROR
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SpeedTestScreen(navController: NavController) {
     var state by remember { mutableStateOf(TestState.IDLE) }
-    var ping by remember { mutableStateOf("0") }
-    var jitter by remember { mutableStateOf("0") }
-    var downloadSpeed by remember { mutableStateOf(0f) }
-    var uploadSpeed by remember { mutableStateOf(0f) }
+    var ping by remember { mutableStateOf("—") }
+    var jitter by remember { mutableStateOf("—") }
+    var downloadSpeed by remember { mutableStateOf("—") }
+    var uploadSpeed by remember { mutableStateOf("—") }
     var currentSpeed by remember { mutableStateOf(0f) }
-    var showConnectionWarning by remember { mutableStateOf(false) }
-    
+    var serverName by remember { mutableStateOf("Buscando servidor...") }
+    var ipInfo by remember { mutableStateOf("") }
+    var statusMessage by remember { mutableStateOf("") }
+    var downloadProgress by remember { mutableStateOf(0) }
+    var uploadProgress by remember { mutableStateOf(0) }
+
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    var speedtestInstance by remember { mutableStateOf<Speedtest?>(null) }
 
-    val startTest: () -> Unit = {
-        if (state == TestState.IDLE || state == TestState.FINISHED) {
-            VibrationManager.vibrate(context)
-            scope.launch {
-                val connected = isOnline()
-                if (!connected) {
-                    showConnectionWarning = true
-                    return@launch
+    // Check vibration preference
+    val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
+    val vibrationEnabled = prefs.getBoolean("vibration_enabled", false)
+
+    // Detect current network type
+    val networkType: String = remember {
+        val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = cm.activeNetwork
+        val caps = cm.getNetworkCapabilities(network)
+        when {
+            caps == null -> "Sin conexión"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WiFi"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Datos Móviles"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+            else -> "Desconocido"
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // CALLBACKS DEL TEST — mismos eventos que la web
+    // ────────────────────────────────────────────────────────────────────────
+    val speedtestHandler = remember {
+        object : Speedtest.SpeedtestHandler() {
+
+            // Llamado periódicamente durante la descarga
+            // dl = velocidad actual en Mbps, progress = 0.0 a 1.0
+            override fun onDownloadUpdate(dl: Double, progress: Double) {
+                scope.launch {
+                    downloadSpeed = "%.2f".format(dl)
+                    currentSpeed = dl.toFloat()
+                    downloadProgress = (progress * 100).toInt()
+                    statusMessage = "Midiendo descarga..."
+                    state = TestState.DOWNLOADING
                 }
+            }
 
-                state = TestState.PINGING
-                currentSpeed = 0f
-                downloadSpeed = 0f
-                uploadSpeed = 0f
-                ping = "..."
-                jitter = "..."
-                
-                // 1. Ping & Jitter
-                val pings = measurePing()
-                if (pings.size < 2) {
-                    ping = "Error"
-                    jitter = "Error"
+            // Llamado periódicamente durante la subida
+            // ul = velocidad actual en Mbps, progress = 0.0 a 1.0
+            override fun onUploadUpdate(ul: Double, progress: Double) {
+                scope.launch {
+                    uploadSpeed = "%.2f".format(ul)
+                    currentSpeed = ul.toFloat()
+                    uploadProgress = (progress * 100).toInt()
+                    statusMessage = "Midiendo subida..."
+                    state = TestState.UPLOADING
+                }
+            }
+
+            // Llamado periódicamente durante el test de ping
+            // ping = ms, jitter = ms, progress = 0.0 a 1.0
+            override fun onPingJitterUpdate(pingValue: Double, jitterValue: Double, progress: Double) {
+                scope.launch {
+                    ping = "%.0f".format(pingValue)
+                    jitter = "%.0f".format(jitterValue)
+                    statusMessage = "Midiendo ping..."
+                }
+            }
+
+            // Recibe IP pública + ISP del usuario
+            override fun onIPInfoUpdate(ipInfoValue: String) {
+                scope.launch {
+                    ipInfo = ipInfoValue
+                }
+            }
+
+            // Si la telemetría está activa, recibe el ID del resultado
+            override fun onTestIDReceived(id: String?, shareURL: String?) {
+                // Puedes usar el ID para generar un enlace compartible
+                // https://librespeed.org/result/<id>
+            }
+
+            // Test completado correctamente
+            override fun onEnd() {
+                scope.launch {
+                    downloadProgress = 100
+                    uploadProgress = 100
+                    statusMessage = "Completado"
                     state = TestState.FINISHED
-                    return@launch
-                }
-                
-                val avgPing = pings.average()
-                
-                // Jitter: standard deviation of successive RTTs
-                var totalDiff = 0.0
-                for (i in 0 until pings.size - 1) {
-                    totalDiff += kotlin.math.abs(pings[i + 1] - pings[i])
-                }
-                val jitterVal = totalDiff / (pings.size - 1)
-                
-                ping = String.format("%.0f", avgPing)
-                jitter = String.format("%.1f", jitterVal)
-                delay(500)
+                    currentSpeed = 0f
 
-                // 2. Download
-                println("Starting download test...")
-                state = TestState.DOWNLOADING
-                runDownloadTest { speed ->
-                    currentSpeed = speed
-                    println("Download progress: $speed Mbps")
-                }.let { finalSpeed ->
-                    downloadSpeed = finalSpeed
-                    println("Download test completed. Final speed: $finalSpeed Mbps")
-                    currentSpeed = 0f // Reset gauge after download phase
+                    // Guardar en historial
+                    val result = SpeedTestResult(
+                        download = downloadSpeed,
+                        upload = uploadSpeed,
+                        ping = ping,
+                        jitter = jitter,
+                        networkType = networkType,
+                        status = "success"
+                    )
+                    SpeedTestHistoryManager.saveResult(context, result)
                 }
-                delay(800)
+            }
 
-                // 3. Upload
-                state = TestState.UPLOADING
-                runUploadTest { speed ->
-                    currentSpeed = speed
-                }.let { finalSpeed ->
-                    uploadSpeed = finalSpeed
-                    currentSpeed = 0f // Reset gauge after test finishes
+            // Error crítico durante el test
+            override fun onCriticalFailure(err: String) {
+                scope.launch {
+                    statusMessage = "Error: ${err}"
+                    state = TestState.ERROR
+
+                    // Guardar en historial como fallido
+                    val result = SpeedTestResult(
+                        download = "—",
+                        upload = "—",
+                        ping = if (ping != "—") ping else "—",
+                        jitter = if (jitter != "—") jitter else "—",
+                        networkType = networkType,
+                        status = "failed"
+                    )
+                    SpeedTestHistoryManager.saveResult(context, result)
                 }
-                
-                state = TestState.FINISHED
             }
         }
     }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // HELPERS DE UI
+    // ────────────────────────────────────────────────────────────────────────
+    fun resetUI() {
+        downloadSpeed = "—"
+        uploadSpeed = "—"
+        ping = "—"
+        jitter = "—"
+        serverName = "Buscando servidor..."
+        ipInfo = ""
+        downloadProgress = 0
+        uploadProgress = 0
+        currentSpeed = 0f
+    }
+
+    fun setStatus(msg: String) {
+        statusMessage = msg
+    }
+
+    fun setBotones(corriendo: Boolean) {
+        // Esta función se maneja mediante el estado
+    }
+
+    val startTest: () -> Unit = {
+        if (state == TestState.IDLE || state == TestState.FINISHED || state == TestState.ERROR) {
+            if (vibrationEnabled) VibrationManager.vibrate(context)
+            resetUI()
+            statusMessage = "Cargando servidores..."
+            state = TestState.LOADING_SERVERS
+
+            speedtestInstance = Speedtest()
+            val config = SpeedtestConfig()
+            speedtestInstance!!.setSpeedtestConfig(config)
+
+            // Cargar servidores y seleccionar automáticamente
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    try {
+                        // Carga la lista oficial de servidores de librespeed.org
+                        speedtestInstance!!.loadServerList("//librespeed.org/backend-servers/servers.php")
+
+                        withContext(Dispatchers.Main) {
+                            statusMessage = "Seleccionando servidor automáticamente..."
+                            state = TestState.SELECTING_SERVER
+                        }
+
+                        // Selecciona el servidor con menor ping de forma asíncrona
+                        speedtestInstance!!.selectServer(object : Speedtest.ServerSelectedHandler() {
+                            override fun onServerSelected(server: TestPoint?) {
+                                if (server == null) {
+                                    scope.launch {
+                                        statusMessage = "No se encontró ningún servidor disponible"
+                                        state = TestState.ERROR
+                                    }
+                                    return
+                                }
+
+                                scope.launch {
+                                    serverName = "Servidor: ${server.name}"
+                                    statusMessage = "Iniciando test..."
+                                    state = TestState.PINGING
+
+                                    // Ejecutar el test
+                                    speedtestInstance!!.start(speedtestHandler)
+                                }
+                            }
+                        })
+
+                    } catch (e: Exception) {
+                        scope.launch {
+                            statusMessage = "Error cargando servidores: ${e.message}"
+                            state = TestState.ERROR
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    val stopTest: () -> Unit = {
+        if (vibrationEnabled) VibrationManager.vibrate(context)
+        speedtestInstance?.abort()
+        statusMessage = "Test detenido"
+        state = TestState.FINISHED
+    }
+
+    val primaryBlue = MaterialTheme.colorScheme.primary
+    val accentGreen = MaterialTheme.colorScheme.tertiary
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val valueColor = MaterialTheme.colorScheme.onBackground
+
+    val statusLabel = when (state) {
+        TestState.IDLE -> "Listo"
+        TestState.LOADING_SERVERS, TestState.SELECTING_SERVER -> "Preparando..."
+        TestState.PINGING -> "Midiendo ping..."
+        TestState.DOWNLOADING -> "Descargando..."
+        TestState.UPLOADING -> "Subiendo..."
+        TestState.FINISHED -> "Completado"
+        TestState.ERROR -> "Error"
+    }
+    val statusColor = when (state) {
+        TestState.FINISHED -> accentGreen
+        TestState.ERROR -> MaterialTheme.colorScheme.error
+        TestState.IDLE -> labelColor
+        else -> primaryBlue
+    }
+
+    val isRunning = state != TestState.IDLE && state != TestState.FINISHED && state != TestState.ERROR
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { 
-                    Text(
-                        "Test de Velocidad",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    ) 
+                title = {
+                    cu.cuban.cmcubano.components.ScreenTitlePill(title = "Speed Test")
                 },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                    Surface(
+                        modifier = Modifier
+                            .padding(start = 12.dp)
+                            .size(44.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 2.dp,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        IconButton(onClick = {
+                            if (vibrationEnabled) VibrationManager.vibrate(context)
+                            navController.popBackStack()
+                        }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Atrás",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    // Botón historial
+                    Surface(
+                        modifier = Modifier
+                            .padding(end = 12.dp)
+                            .size(44.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 2.dp,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        IconButton(onClick = {
+                            if (vibrationEnabled) VibrationManager.vibrate(context)
+                            navController.navigate("speedtest_history")
+                        }) {
+                            Icon(
+                                Icons.Filled.History,
+                                contentDescription = "Historial",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
+                    containerColor = Color.Transparent,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
-        },
-        containerColor = MaterialTheme.colorScheme.background
+        }
     ) { paddingValues ->
-        BoxWithConstraints(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(MaterialTheme.colorScheme.background)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(top = 12.dp, bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            val screenHeight = maxHeight
-            val screenWidth = maxWidth
-            
-            // Calculate dynamic gauge size
-            val gaugeSize = minOf(screenWidth * 0.75f, screenHeight * 0.40f).coerceAtLeast(160.dp)
 
-            Box(
-                modifier = Modifier.fillMaxSize()
+            // ── Speedometer card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp)
-                    .padding(top = 16.dp, bottom = 100.dp), // Padding for button
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // Header: Download & Upload (Top Results)
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp, bottom = 20.dp, start = 20.dp, end = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    ResultHeaderItem(
-                        label = "Download Mbps",
-                        value = String.format("%.2f", downloadSpeed),
-                        icon = Icons.Default.ArrowDownward,
-                        color = Color(0xFF00E5FF)
+                    // Speedometer with text overlaid inside
+                    SemiCircleSpeedometer(
+                        speed = currentSpeed,
+                        maxSpeed = 100f,
+                        modifier = Modifier.fillMaxWidth(),
+                        primaryColor = primaryBlue,
+                        speedText = if (isRunning) "%.1f".format(currentSpeed) else "0.0",
+                        unitText = "Mbps",
+                        statusText = statusLabel,
+                        statusColor = statusColor
                     )
-                    ResultHeaderItem(
-                        label = "Upload Mbps",
-                        value = String.format("%.2f", uploadSpeed),
-                        icon = Icons.Default.ArrowUpward,
-                        color = Color(0xFF00E5FF)
-                    )
+
+                    // Indicador de tipo de red — sutil, sin llamar la atención
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val netIcon = if (networkType == "WiFi") Icons.Filled.Wifi else Icons.Filled.SignalCellularAlt
+                        Icon(
+                            netIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            networkType,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                        )
+                    }
+
+                    // Server / IP info below arc
+                    if (state != TestState.IDLE && state != TestState.LOADING_SERVERS && state != TestState.SELECTING_SERVER) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = serverName,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            textAlign = TextAlign.Center
+                        )
+                        if (ipInfo.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = ipInfo,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Latency: Ping & Jitter
+            // ── Metrics grid
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    LatencyItem(icon = Icons.Default.SwapCalls, label = "Ping", value = "$ping ms")
-                    Spacer(modifier = Modifier.width(32.dp))
-                    LatencyItem(icon = Icons.Default.GraphicEq, label = "Jitter", value = "$jitter ms")
+                    MetricCard(
+                        label = "Ping",
+                        value = ping,
+                        unit = "ms",
+                        modifier = Modifier.weight(1f)
+                    )
+                    MetricCard(
+                        label = "Jitter",
+                        value = jitter,
+                        unit = "ms",
+                        modifier = Modifier.weight(1f)
+                    )
                 }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Gauge Section
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.size(gaugeSize)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Speedometer(
-                        speed = currentSpeed,
-                        state = state,
-                        maxSpeed = 80f,
-                        modifier = Modifier.fillMaxSize()
+                    MetricCard(
+                        label = "Descarga",
+                        value = downloadSpeed,
+                        unit = "Mbps",
+                        modifier = Modifier.weight(1f),
+                        progress = downloadProgress / 100f,
+                        showProgress = state == TestState.DOWNLOADING || state == TestState.FINISHED,
+                        progressColor = primaryBlue
+                    )
+                    MetricCard(
+                        label = "Subida",
+                        value = uploadSpeed,
+                        unit = "Mbps",
+                        modifier = Modifier.weight(1f),
+                        progress = uploadProgress / 100f,
+                        showProgress = state == TestState.UPLOADING || state == TestState.FINISHED,
+                        progressColor = accentGreen
                     )
                 }
             }
 
-            // Start Button at the bottom (pinned)
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // ── Main button
             Button(
-                onClick = startTest,
+                onClick = if (isRunning) stopTest else startTest,
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(24.dp)
-                    .heightIn(min = 48.dp, max = 60.dp),
-                shape = RoundedCornerShape(16.dp),
+                    .height(56.dp),
+                shape = RoundedCornerShape(28.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
+                    containerColor = if (isRunning) MaterialTheme.colorScheme.error else primaryBlue,
+                    contentColor = if (isRunning) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary
                 ),
-                enabled = state == TestState.IDLE || state == TestState.FINISHED
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
             ) {
                 Text(
-                    text = if (state == TestState.IDLE) "INICIAR TEST" else if (state == TestState.FINISHED) "REPETIR TEST" else "PROBANDO...",
-                    fontSize = 18.sp,
+                    text = when (state) {
+                        TestState.IDLE -> "Iniciar prueba"
+                        TestState.FINISHED -> "Repetir prueba"
+                        TestState.ERROR -> "Reintentar"
+                        else -> "Detener"
+                    },
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
     }
-    
-    // Diálogo de advertencia de conexión
-    if (showConnectionWarning) {
-        AlertDialog(
-            onDismissRequest = { showConnectionWarning = false },
-            title = { 
-                Text(
-                    "Sin conexión a internet",
-                    fontWeight = FontWeight.Bold
-                ) 
-            },
-            text = { 
-                Text(
-                    "No se detecta conexión a una red. Por favor, verifica tu conexión a internet e intenta nuevamente."
-                ) 
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = { showConnectionWarning = false }
-                ) {
-                    Text("OK")
+}
+
+// ── Semi-circle speedometer with overlaid text inside the arc
+@Composable
+fun SemiCircleSpeedometer(
+    speed: Float,
+    maxSpeed: Float,
+    modifier: Modifier = Modifier,
+    primaryColor: Color,
+    speedText: String,
+    unitText: String,
+    statusText: String,
+    statusColor: Color
+) {
+    val animatedSpeed by animateFloatAsState(
+        targetValue = speed,
+        animationSpec = tween(400, easing = EaseInOut),
+        label = "speedAnim"
+    )
+
+    val trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+    val glowColor = primaryColor.copy(alpha = 0.20f)
+    val onBg = MaterialTheme.colorScheme.onBackground
+    val onSurface = MaterialTheme.colorScheme.onSurfaceVariant
+
+    BoxWithConstraints(
+        modifier = modifier.fillMaxWidth(),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        val diameter = minOf(maxWidth - 32.dp, 204.dp).coerceAtLeast(160.dp)
+        val strokeWidth = 13.dp
+        val topPad = 8.dp
+        val radius = diameter / 2
+        val startAngle = 140f
+        val sweepTotal = 260f
+
+        // Bottom of the arc ends at angle 40° (sin 40° ≈ 0.643):
+        val gaugeHeight = topPad + strokeWidth + (radius * 1.643f)
+
+        Box(
+            modifier = Modifier
+                .width(diameter + strokeWidth + 8.dp)
+                .height(gaugeHeight),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val strokePx = strokeWidth.toPx()
+                val radiusPx = radius.toPx()
+                val centerX = size.width / 2f
+                val centerY = (topPad + strokeWidth / 2).toPx() + radiusPx
+
+                val topLeft = Offset(centerX - radiusPx, centerY - radiusPx)
+                val arcSize = Size(radiusPx * 2f, radiusPx * 2f)
+                val progress = (animatedSpeed / maxSpeed).coerceIn(0f, 1f)
+
+                // Background track arc
+                drawArc(
+                    color = trackColor,
+                    startAngle = startAngle,
+                    sweepAngle = sweepTotal,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                )
+
+                // Progress arc
+                if (progress > 0.005f) {
+                    drawArc(
+                        color = glowColor,
+                        startAngle = startAngle,
+                        sweepAngle = sweepTotal * progress,
+                        useCenter = false,
+                        topLeft = Offset(topLeft.x - 2.dp.toPx(), topLeft.y - 2.dp.toPx()),
+                        size = Size(arcSize.width + 4.dp.toPx(), arcSize.height + 4.dp.toPx()),
+                        style = Stroke(width = strokePx + 4.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                    drawArc(
+                        color = primaryColor,
+                        startAngle = startAngle,
+                        sweepAngle = sweepTotal * progress,
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = arcSize,
+                        style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                    )
                 }
-            },
-            icon = {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = "Advertencia",
-                    tint = Color(0xFFFF9800)
-                )
             }
-        )
-    }
-}
-}
 
-@Composable
-fun ResultHeaderItem(label: String, value: String, icon: ImageVector, color: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-            fontSize = 14.sp
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = value,
-                color = MaterialTheme.colorScheme.primary,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold
-            )
+            // Text cluster positioned comfortably inside the arc (well below the top curve)
+            Column(
+                modifier = Modifier
+                    .padding(top = topPad + strokeWidth + (radius * 0.28f)),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = speedText,
+                    fontSize = 42.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = onBg,
+                    letterSpacing = (-0.5).sp,
+                    lineHeight = 42.sp
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = unitText,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = onSurface
+                )
+                if (statusText.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = statusText,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = statusColor
+                    )
+                }
+            }
         }
     }
 }
 
+// ── Metric card
 @Composable
-fun LatencyItem(icon: ImageVector, label: String, value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-            modifier = Modifier.size(16.dp)
-        )
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(
-            text = "$label $value",
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-            fontSize = 13.sp
-        )
+fun MetricCard(
+    label: String,
+    value: String,
+    unit: String,
+    modifier: Modifier = Modifier,
+    progress: Float = 0f,
+    showProgress: Boolean = false,
+    progressColor: Color = Color(0xFF29B6F6)
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 18.dp)
+        ) {
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.Start
+            ) {
+                Text(
+                    text = value,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    letterSpacing = (-0.5).sp
+                )
+                if (value != "—") {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = unit,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 3.dp)
+                    )
+                }
+            }
+            if (showProgress && progress > 0f) {
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                    color = progressColor,
+                    trackColor = progressColor.copy(alpha = 0.15f)
+                )
+            }
+        }
     }
 }
 
+// Legacy Speedometer kept to avoid breaking any other references
 @Composable
 fun Speedometer(speed: Float, state: TestState, maxSpeed: Float, modifier: Modifier = Modifier) {
     val animatedSpeed by animateFloatAsState(
         targetValue = speed,
-        animationSpec = tween(400, easing = EaseInOut)
+        animationSpec = tween(400, easing = EaseInOut),
+        label = "legacySpeedAnim"
     )
-
-    val trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
-    val inactiveTickColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+    val trackColor = MaterialTheme.colorScheme.surfaceVariant
     val activeColor = MaterialTheme.colorScheme.primary
-    val numberColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-    val centerTextColor = MaterialTheme.colorScheme.onSurface
-    
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = modifier
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 0.dp
-        ) {}
-
+    Box(contentAlignment = Alignment.Center, modifier = modifier) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val center = Offset(size.width / 2, size.height / 2)
-            val radius = size.width / 2.2f
             val startAngle = 150f
             val sweepAngle = 240f
-            
-            // Background Arc (Track)
             drawArc(
                 color = trackColor,
                 startAngle = startAngle,
@@ -365,383 +721,27 @@ fun Speedometer(speed: Float, state: TestState, maxSpeed: Float, modifier: Modif
                 useCenter = false,
                 style = Stroke(width = 8f, cap = StrokeCap.Round)
             )
-
-            // Inner markings and numbers
-            val step = 10
-            for (i in 0..maxSpeed.toInt() step step) {
-                val angle = startAngle + (i / maxSpeed) * sweepAngle
-                val rad = (angle * PI / 180f).toFloat()
-                
-                // Numbers
-                val textRadius = radius - 45f
-                val x = center.x + textRadius * cos(rad)
-                val y = center.y + textRadius * sin(rad)
-                
-                // Note: Drawing text in Canvas requires native canvas or text measurer
-                // For simplicity, we'll focus on ticks and the progress arc
-                
-                // Tick marks
-                val tickStartRadius = radius - 15f
-                val tickEndRadius = radius - 5f
-                val startX = center.x + tickStartRadius * cos(rad)
-                val startY = center.y + tickStartRadius * sin(rad)
-                val endX = center.x + tickEndRadius * cos(rad)
-                val endY = center.y + tickEndRadius * sin(rad)
-                
-                drawLine(
-                    color = inactiveTickColor,
-                    start = Offset(startX, startY),
-                    end = Offset(endX, endY),
-                    strokeWidth = 2f
-                )
-            }
-            
-            // Outer Track Ticks (many small ticks)
-            for (i in 0..100) {
-                val angle = startAngle + (i / 100f) * sweepAngle
-                val rad = (angle * PI / 180f).toFloat()
-                val tickStartRadius = radius + 2f
-                val tickEndRadius = radius + 10f
-                
-                drawLine(
-                    color = if (angle <= startAngle + (animatedSpeed / maxSpeed) * sweepAngle) 
-                        activeColor else inactiveTickColor,
-                    start = Offset(center.x + tickStartRadius * cos(rad), center.y + tickStartRadius * sin(rad)),
-                    end = Offset(center.x + tickEndRadius * cos(rad), center.y + tickEndRadius * sin(rad)),
-                    strokeWidth = 2f
-                )
-            }
-
-            // Progress Arc (Cyan Glow)
-            val progressProgress = (animatedSpeed / maxSpeed).coerceIn(0f, 1f)
+            val progressFrac = (animatedSpeed / maxSpeed).coerceIn(0f, 1f)
             drawArc(
                 color = activeColor,
                 startAngle = startAngle,
-                sweepAngle = sweepAngle * progressProgress,
+                sweepAngle = sweepAngle * progressFrac,
                 useCenter = false,
                 style = Stroke(width = 12f, cap = StrokeCap.Round)
             )
         }
-        
-        // Gauge Numbers (Overlay)
-        // Manual positioning for numbers around the gauge
-        val numberMax = maxSpeed.toInt()
-        val step = 10
-        Box(modifier = Modifier.fillMaxSize()) {
-            for (i in 0..numberMax step step) {
-                val angle = 150f + (i / maxSpeed) * 240f
-                val rad = (angle * PI / 180f)
-                val distance = 95.dp
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .offset(
-                            x = (distance.value * cos(rad)).dp,
-                            y = (distance.value * sin(rad)).dp
-                        )
-                ) {
-                    Text(
-                        text = i.toString(),
-                        color = numberColor,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-
-        // Central Speed Text
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = String.format("%.2f", animatedSpeed),
                 style = MaterialTheme.typography.displayMedium,
                 fontWeight = FontWeight.Bold,
-                color = centerTextColor
+                color = MaterialTheme.colorScheme.onBackground
             )
             Text(
                 text = "Mbps",
                 style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
         }
     }
-}
-
-// Network Logic
-
-// Check connectivity first
-suspend fun isOnline(): Boolean = withContext(Dispatchers.IO) {
-    try {
-        val url = URL("https://www.google.com")
-        val conn = url.openConnection() as HttpURLConnection
-        conn.connectTimeout = 2000
-        conn.connect()
-        val code = conn.responseCode
-        conn.disconnect()
-        code == 200
-    } catch (e: Exception) {
-        false
-    }
-}
-
-suspend fun measurePing(): List<Long> = withContext(Dispatchers.IO) {
-    val results = mutableListOf<Long>()
-    val targetIp = "1.1.1.1"
-    
-    try {
-        // Use system ping command for most accurate ICMP results
-        // -c 10: 10 packets
-        // -i 0.2: 200ms interval
-        // -w 5: timeout 5s
-        val process = Runtime.getRuntime().exec("ping -c 10 -i 0.2 -w 5 $targetIp")
-        val reader = process.inputStream.bufferedReader()
-        reader.forEachLine { line ->
-            if (line.contains("time=")) {
-                val timeStr = line.substringAfter("time=").substringBefore(" ms").trim()
-                timeStr.toDoubleOrNull()?.let { results.add(it.toLong()) }
-            }
-        }
-        process.waitFor()
-    } catch (e: Exception) {
-        // Fallback to socket if ping command fails
-        repeat(5) {
-            val start = System.nanoTime()
-            try {
-                val socket = java.net.Socket()
-                socket.connect(java.net.InetSocketAddress(targetIp, 80), 1500)
-                results.add((System.nanoTime() - start) / 1_000_000)
-                socket.close()
-            } catch (ex: Exception) { }
-            delay(100)
-        }
-    }
-    results
-}
-
-suspend fun runDownloadTest(onProgress: (Float) -> Unit): Float = withContext(Dispatchers.IO) {
-    println("Download test: Starting...")
-    
-    val downloadUrl = "https://speed.cloudflare.com/__down?bytes=50000000" // 50MB
-    
-    val startTime = System.currentTimeMillis()
-    val testDurationLimit = 12000L // 12 seconds
-    var totalBytes = 0L
-    val speedHistory = mutableListOf<Float>()
-    
-    try {
-        val url = URL(downloadUrl)
-        val conn = url.openConnection() as HttpURLConnection
-        conn.connectTimeout = 8000
-        conn.readTimeout = 15000
-        conn.setRequestProperty("User-Agent", "CMCubano-SpeedTest/1.0")
-        conn.setRequestProperty("Accept", "*/*")
-        conn.setRequestProperty("Connection", "keep-alive")
-        
-        println("Download test: Connecting...")
-        conn.connect()
-        
-        val responseCode = conn.responseCode
-        println("Download test: Response code: $responseCode")
-        
-        if (responseCode == 200) {
-            val input: InputStream = conn.inputStream
-            val buffer = ByteArray(8192) // 8KB buffer
-            var bytesRead: Int
-            var lastUpdateTime = startTime
-            var lastBytes = 0L
-            
-            while ((System.currentTimeMillis() - startTime) < testDurationLimit) {
-                bytesRead = input.read(buffer)
-                if (bytesRead == -1) break
-                
-                totalBytes += bytesRead.toLong()
-                val currentTime = System.currentTimeMillis()
-                
-                // Update every 100ms for ultra-smooth animation
-                if (currentTime - lastUpdateTime >= 100) {
-                    val deltaTime = (currentTime - lastUpdateTime) / 1000.0
-                    val deltaBytes = totalBytes - lastBytes
-                    
-                    if (deltaTime > 0 && deltaBytes > 0) {
-                        val instantSpeed = (deltaBytes * 8 / deltaTime / 1_000_000).toFloat()
-                        
-                        // Simulate SpeedTest behavior with realistic patterns
-                        val elapsedTime = (currentTime - startTime) / 1000.0
-                        val simulatedSpeed = simulateSpeedTestPattern(instantSpeed, elapsedTime.toFloat())
-                        
-                        speedHistory.add(simulatedSpeed)
-                        withContext(Dispatchers.Main) { onProgress(simulatedSpeed) }
-                        
-                        lastUpdateTime = currentTime
-                        lastBytes = totalBytes
-                    }
-                }
-                
-                // Very small delay to prevent blocking UI
-                delay(5)
-            }
-            
-            input.close()
-            println("Download test: Downloaded $totalBytes bytes")
-            
-        } else {
-            throw Exception("HTTP $responseCode")
-        }
-        
-        conn.disconnect()
-        
-    } catch (e: Exception) {
-        println("Download test: Error: ${e.message}")
-    }
-    
-    // Calculate final average speed (excluding first 2 seconds and last 1 second)
-    val finalSpeed = if (speedHistory.size > 20) {
-        // Take the middle portion for more accurate average
-        val middleStart = (speedHistory.size * 0.2).toInt()
-        val middleEnd = (speedHistory.size * 0.9).toInt()
-        speedHistory.subList(middleStart, middleEnd).average().toFloat()
-    } else if (speedHistory.isNotEmpty()) {
-        speedHistory.average().toFloat()
-    } else {
-        val durationSec = (System.currentTimeMillis() - startTime) / 1000.0
-        if (durationSec > 0.5) (totalBytes * 8 / durationSec / 1_000_000).toFloat() else 0f
-    }
-    
-    println("Download test: Finished with final speed: $finalSpeed Mbps")
-    finalSpeed
-}
-
-// Simulate SpeedTest's characteristic speed pattern
-private fun simulateSpeedTestPattern(realSpeed: Float, elapsedTime: Float): Float {
-    return when {
-        elapsedTime < 1.0f -> {
-            // Initial ramp-up phase
-            realSpeed * (0.3f + elapsedTime * 0.7f) + (kotlin.random.Random.nextFloat() * 2f - 1f)
-        }
-        elapsedTime < 3.0f -> {
-            // Peak phase with high fluctuation
-            val fluctuation = (kotlin.math.sin(elapsedTime * 2f) * 0.15f + kotlin.random.Random.nextFloat() * 0.2f - 0.1f)
-            realSpeed * (1.0f + fluctuation)
-        }
-        elapsedTime < 8.0f -> {
-            // Stable phase with moderate fluctuation
-            val fluctuation = (kotlin.math.sin(elapsedTime * 1.5f) * 0.08f + kotlin.random.Random.nextFloat() * 0.12f - 0.06f)
-            realSpeed * (1.0f + fluctuation)
-        }
-        else -> {
-            // Settling phase
-            val fluctuation = (kotlin.random.Random.nextFloat() * 0.08f - 0.04f)
-            realSpeed * (0.95f + fluctuation)
-        }
-    }.coerceAtLeast(0.1f)
-}
-
-suspend fun runUploadTest(onProgress: (Float) -> Unit): Float = withContext(Dispatchers.IO) {
-    println("Upload test: Starting...")
-    
-    val url = URL("https://httpbin.org/post") 
-    val startTime = System.currentTimeMillis()
-    val testDurationLimit = 12000L // 12 seconds
-    var totalBytesWritten: Long = 0
-    val speedHistory = mutableListOf<Float>()
-    
-    try {
-        val conn = url.openConnection() as HttpURLConnection
-        conn.doOutput = true
-        conn.requestMethod = "POST"
-        val payloadSize = 20 * 1024 * 1024 // 20MB
-        conn.setFixedLengthStreamingMode(payloadSize)
-        conn.setRequestProperty("Content-Type", "application/octet-stream")
-        conn.setRequestProperty("User-Agent", "CMCubano-SpeedTest/1.0")
-        conn.setRequestProperty("Connection", "keep-alive")
-        conn.connectTimeout = 8000
-        conn.readTimeout = 15000
-        
-        println("Upload test: Connecting...")
-        conn.connect()
-        
-        val output: OutputStream = conn.outputStream
-        val buffer = ByteArray(8192) { 0x01 } // 8KB buffer
-        var lastUpdateTime = startTime
-        var lastBytes = 0L
-        
-        while (totalBytesWritten < payloadSize && (System.currentTimeMillis() - startTime) < testDurationLimit) {
-            output.write(buffer)
-            totalBytesWritten += buffer.size.toLong()
-            val currentTime = System.currentTimeMillis()
-            
-            // Update every 100ms for ultra-smooth animation
-            if (currentTime - lastUpdateTime >= 100) {
-                val deltaTime = (currentTime - lastUpdateTime) / 1000.0
-                val deltaBytes = totalBytesWritten - lastBytes
-                
-                if (deltaTime > 0 && deltaBytes > 0) {
-                    val instantSpeed = (deltaBytes * 8 / deltaTime / 1_000_000).toFloat()
-                    
-                    // Simulate SpeedTest behavior with realistic patterns (upload is usually more stable)
-                    val elapsedTime = (currentTime - startTime) / 1000.0
-                    val simulatedSpeed = simulateUploadSpeedPattern(instantSpeed, elapsedTime.toFloat())
-                    
-                    speedHistory.add(simulatedSpeed)
-                    withContext(Dispatchers.Main) { onProgress(simulatedSpeed) }
-                    
-                    lastUpdateTime = currentTime
-                    lastBytes = totalBytesWritten
-                }
-            }
-            
-            // Very small delay to prevent blocking UI
-            delay(5)
-        }
-        
-        output.close()
-        val responseCode = conn.responseCode
-        println("Upload test: Response code: $responseCode")
-        conn.disconnect()
-        println("Upload test: Uploaded $totalBytesWritten bytes")
-        
-    } catch (e: Exception) {
-        println("Upload test: Error: ${e.message}")
-    }
-    
-    // Calculate final average speed (excluding first 2 seconds and last 1 second)
-    val finalSpeed = if (speedHistory.size > 20) {
-        // Take the middle portion for more accurate average
-        val middleStart = (speedHistory.size * 0.2).toInt()
-        val middleEnd = (speedHistory.size * 0.9).toInt()
-        speedHistory.subList(middleStart, middleEnd).average().toFloat()
-    } else if (speedHistory.isNotEmpty()) {
-        speedHistory.average().toFloat()
-    } else {
-        val durationSec = (System.currentTimeMillis() - startTime) / 1000.0
-        if (durationSec > 0.5) (totalBytesWritten * 8 / durationSec / 1_000_000).toFloat() else 0f
-    }
-    
-    println("Upload test: Finished with final speed: $finalSpeed Mbps")
-    finalSpeed
-}
-
-// Simulate SpeedTest's upload pattern (more stable than download)
-private fun simulateUploadSpeedPattern(realSpeed: Float, elapsedTime: Float): Float {
-    return when {
-        elapsedTime < 1.5f -> {
-            // Initial ramp-up phase (slower for upload)
-            realSpeed * (0.2f + elapsedTime * 0.5f) + (kotlin.random.Random.nextFloat() * 1.5f - 0.75f)
-        }
-        elapsedTime < 4.0f -> {
-            // Peak phase with moderate fluctuation
-            val fluctuation = (kotlin.math.sin(elapsedTime * 1.8f) * 0.1f + kotlin.random.Random.nextFloat() * 0.15f - 0.075f)
-            realSpeed * (1.0f + fluctuation)
-        }
-        elapsedTime < 9.0f -> {
-            // Stable phase with low fluctuation
-            val fluctuation = (kotlin.math.sin(elapsedTime * 1.2f) * 0.05f + kotlin.random.Random.nextFloat() * 0.08f - 0.04f)
-            realSpeed * (1.0f + fluctuation)
-        }
-        else -> {
-            // Settling phase
-            val fluctuation = (kotlin.random.Random.nextFloat() * 0.06f - 0.03f)
-            realSpeed * (0.97f + fluctuation)
-        }
-    }.coerceAtLeast(0.05f)
 }

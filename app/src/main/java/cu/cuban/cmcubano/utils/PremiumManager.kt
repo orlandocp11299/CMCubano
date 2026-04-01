@@ -46,6 +46,14 @@ object PremiumManager {
         return false
     }
 
+    fun deactivatePremium(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putBoolean(IS_PREMIUM, false)
+            .remove(PREMIUM_CODE)
+            .apply()
+    }
+
     private fun verifySignature(data: String, signatureStr: String): Boolean {
         try {
             // 1. Limpiar la firma de posibles headers y espacios

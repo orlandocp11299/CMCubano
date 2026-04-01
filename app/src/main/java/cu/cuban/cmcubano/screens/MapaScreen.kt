@@ -4,7 +4,9 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebSettings
 import android.content.Context
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -51,28 +53,57 @@ fun MapaScreen(navController: NavController) {
         topBar = {
             CenterAlignedTopAppBar(
                 title = { 
-                    Text(
-                        "Mapa de Radiobases",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    ) 
+                    cu.cuban.cmcubano.components.ScreenTitlePill(title = "Mapa de Radiobases")
                 },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                    val isDark = isSystemInDarkTheme()
+                    Surface(
+                        modifier = Modifier
+                            .padding(start = 12.dp)
+                            .size(44.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 2.dp,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.3f else 0.6f)
+                        )
+                    ) {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(
+                                Icons.Default.ArrowBack,
+                                contentDescription = "Atrás",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = {
-                            // Recargar la página web
-                            cachedWebView.reload()
-                        }
-                    ) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = "Actualizar mapa",
-                            modifier = Modifier.size(24.dp)
+                    val isDark = isSystemInDarkTheme()
+                    Surface(
+                        modifier = Modifier
+                            .padding(end = 12.dp)
+                            .size(44.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 2.dp,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.3f else 0.6f)
                         )
+                    ) {
+                        IconButton(
+                            onClick = {
+                                // Recargar la página web
+                                cachedWebView.reload()
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Actualizar mapa",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(

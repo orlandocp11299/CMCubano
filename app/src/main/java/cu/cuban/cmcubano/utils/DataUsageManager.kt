@@ -384,23 +384,32 @@ class DataUsageManager(private val context: Context) {
      */
     private fun getAppDataUsageLegacy(startTime: Long, endTime: Long): List<AppDataUsage> {
         val appUsageList = mutableListOf<AppDataUsage>()
-        
+
         try {
-            val installedApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
-            
-            for (appInfo in installedApps) {
+            // Usar queryIntentActivities en lugar de getInstalledApplications
+            val mainIntent = android.content.Intent(android.content.Intent.ACTION_MAIN, null)
+                .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+            val installedApps = packageManager.queryIntentActivities(mainIntent, PackageManager.MATCH_ALL)
+
+            for (resolveInfo in installedApps) {
+                val packageName = resolveInfo.activityInfo.packageName
+                val appInfo = try {
+                    packageManager.getApplicationInfo(packageName, 0)
+                } catch (e: Exception) {
+                    continue
+                }
+
                 if (appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) {
                     continue
                 }
-                
+
                 val uid = appInfo.uid
                 val appName = packageManager.getApplicationLabel(appInfo).toString()
-                val packageName = appInfo.packageName
-                
+
                 val rxBytes = android.net.TrafficStats.getUidRxBytes(uid) ?: 0L
                 val txBytes = android.net.TrafficStats.getUidTxBytes(uid) ?: 0L
                 val totalBytes = rxBytes + txBytes
-                
+
                 if (totalBytes > 0) {
                     val appDataUsage = AppDataUsage(
                         appName = appName,
@@ -413,17 +422,17 @@ class DataUsageManager(private val context: Context) {
                         packetsSent = (totalBytes / 1500).toLong(),
                         packetsReceived = (totalBytes / 1500).toLong()
                     )
-                    
+
                     appUsageList.add(appDataUsage)
                 }
             }
-            
+
             appUsageList.sortByDescending { it.mobileBytes + it.wifiBytes }
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "Error en método legacy para datos por aplicación", e)
         }
-        
+
         return appUsageList
     }
     

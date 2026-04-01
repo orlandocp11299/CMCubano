@@ -1,20 +1,25 @@
 package cu.cuban.cmcubano.screens
 
-import android.content.Context
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -22,18 +27,69 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
-import cu.cuban.cmcubano.utils.PremiumManager
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
-import java.util.*
-import cu.cuban.cmcubano.utils.NotificationScheduler
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import android.content.Context
+import android.telephony.SubscriptionManager
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import cu.cuban.cmcubano.UssdManager
+import kotlinx.coroutines.flow.collectLatest
+import cu.cuban.cmcubano.utils.VibrationManager
 
+data class MenuCardItem(
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val color: Color,
+    val route: String
+)
 
-
+@Composable
+fun BalanceItem(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+    ) {
+        Surface(
+            modifier = Modifier.size(40.dp),
+            shape = RoundedCornerShape(14.dp),
+            color = color.copy(alpha = 0.15f)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = color
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = value.takeIf { it != "N/A" } ?: "---",
+            style = MaterialTheme.typography.titleSmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            ),
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,53 +115,168 @@ fun PlanesMenuScreen(navController: NavController) {
             Icons.Default.SwapHoriz,
             Color(0xFF4CAF50),
             "transferencia_list"
+        ),
+        MenuCardItem(
+            "Atención al Cliente",
+            "Contacta con ETECSA",
+            Icons.Default.Headset,
+            Color(0xFF009688),
+            "atencion_cliente_list"
+        ),
+        MenuCardItem(
+            "Recordatorios",
+            "Aviso de vigencias, compra automatica y más",
+            Icons.Default.Notifications,
+            Color(0xFF9C27B0),
+            "recordatorio_screen"
         )
     )
-    
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val isPremium = remember { PremiumManager.isPremium(context) }
-    var isTapped by remember { mutableStateOf(false) }
 
-    LaunchedEffect(isTapped) {
-        if (isTapped) {
-            delay(3000)
-            isTapped = false
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("planes_menu_prefs", Context.MODE_PRIVATE) }
+    var isGridView by remember { mutableStateOf(prefs.getBoolean("is_grid_view", true)) }
+
+    var saldo by remember { mutableStateOf(prefs.getString("saldo", "N/A") ?: "N/A") }
+    var datos by remember { mutableStateOf(prefs.getString("datos", "N/A") ?: "N/A") }
+    var voz by remember { mutableStateOf(prefs.getString("voz", "N/A") ?: "N/A") }
+    var sms by remember { mutableStateOf(prefs.getString("sms", "N/A") ?: "N/A") }
+    var vencimiento by remember { mutableStateOf(prefs.getString("vencimiento", "N/A") ?: "N/A") }
+    var ultimaConsulta by remember { mutableStateOf(prefs.getString("ultima_consulta", null)) }
+    var showErrorDialog by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
+
+    // Selector de SIM
+    var selectedSimIndex by remember { mutableStateOf(0) }
+    val subscriptionManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
+    val activeSubscriptions = remember {
+        try {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+                subscriptionManager.activeSubscriptionInfoList ?: emptyList()
+            } else {
+                emptyList()
+            }
+        } catch (e: SecurityException) {
+            emptyList()
         }
     }
 
-    var isEnabled by remember {
-        mutableStateOf(
-            context.getSharedPreferences("recordatorio_prefs", Context.MODE_PRIVATE)
-                .getBoolean("recordatorio_enabled", isPremium)
-        )
+    val ussdResponse by UssdManager.ussdResponse.collectAsState()
+    val isLoading by UssdManager.isLoading.collectAsState()
+
+    LaunchedEffect(isGridView) {
+        prefs.edit().putBoolean("is_grid_view", isGridView).apply()
     }
 
-    var isExpanded by remember { mutableStateOf(false) }
-    val recordatorioPrefs = remember { context.getSharedPreferences("recordatorio_prefs", Context.MODE_PRIVATE) }
-    var lastSmsTimestamp by remember {
-        mutableStateOf(recordatorioPrefs.getLong("hidden_start_date", 0L))
+    LaunchedEffect(ussdResponse) {
+        android.util.Log.d("USSD", "LaunchedEffect triggered, ussdResponse: $ussdResponse")
+        ussdResponse?.let { response ->
+            android.util.Log.d("USSD", "Respuesta completa: $response")
+
+            // Verificar si la respuesta contiene error
+            if (response.contains("Error", ignoreCase = true) ||
+                response.contains("falló", ignoreCase = true) ||
+                response.contains("no disponible", ignoreCase = true) ||
+                response.contains("Android < 8", ignoreCase = true)) {
+                // Mostrar error con mensaje predeterminado
+                errorMessage = "La solicitud ha fallado, revise si tiene cobertura, si tiene la red 4G forzada o el modo avión activo."
+                showErrorDialog = true
+                android.util.Log.d("USSD", "Error en consulta: $response")
+            } else {
+                // Procesar respuesta exitosa
+                val parsed = parseUssdResponse(response)
+                android.util.Log.d("USSD", "Parsed: $parsed")
+                saldo = parsed["saldo"] ?: "N/A"
+                datos = parsed["datos"] ?: "N/A"
+                voz = parsed["voz"] ?: "N/A"
+                sms = parsed["sms"] ?: "N/A"
+                vencimiento = parsed["vencimiento"] ?: "N/A"
+
+                // Guardar datos en SharedPreferences solo si es exitoso
+                prefs.edit().apply {
+                    putString("saldo", saldo)
+                    putString("datos", datos)
+                    putString("voz", voz)
+                    putString("sms", sms)
+                    putString("vencimiento", vencimiento)
+                    val timestamp = System.currentTimeMillis()
+                    putLong("ultima_consulta_timestamp", timestamp)
+                    val fecha = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+                    putString("ultima_consulta", fecha)
+                    apply()
+                }
+
+                ultimaConsulta = prefs.getString("ultima_consulta", null)
+
+                android.util.Log.d("USSD", "Saldo asignado: $saldo")
+                android.util.Log.d("USSD", "Datos asignado: $datos")
+                android.util.Log.d("USSD", "Voz asignado: $voz")
+                android.util.Log.d("USSD", "SMS asignado: $sms")
+                android.util.Log.d("USSD", "Vencimiento asignado: $vencimiento")
+            }
+
+            // Limpiar la respuesta para que no aparezca en otras pantallas
+            UssdManager.clearResponse()
+        }
     }
-    
-    var showDatePicker by remember { mutableStateOf(false) }
-    val datePickerState = rememberDatePickerState()
-    
-    val dateFormatter = remember { SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()) }
-    val nextAlertDateFormatter = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
 
-
+    fun consultarTodo() {
+        VibrationManager.vibrate(context)
+        val simIndex = if (activeSubscriptions.size > 1) selectedSimIndex else -1
+        UssdManager.sendUssdRequest(context, "*222#", simIndex)
+    }
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { 
-                    Text(
-                        "Planes y Consultas",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    ) 
+                title = {
+                    cu.cuban.cmcubano.components.ScreenTitlePill(title = "Planes y Consultas")
                 },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                    val isDark = isSystemInDarkTheme()
+                    Surface(
+                        modifier = Modifier
+                            .padding(start = 12.dp)
+                            .size(44.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 2.dp,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.3f else 0.6f)
+                        )
+                    ) {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(
+                                Icons.Default.ArrowBack,
+                                contentDescription = "Atrás",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    val isDark = isSystemInDarkTheme()
+                    Surface(
+                        modifier = Modifier
+                            .padding(end = 12.dp)
+                            .size(44.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 2.dp,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.3f else 0.6f)
+                        )
+                    ) {
+                        IconButton(
+                            onClick = { isGridView = !isGridView }
+                        ) {
+                            Icon(
+                                imageVector = if (isGridView) Icons.Default.List else Icons.Default.Grid3x3,
+                                contentDescription = if (isGridView) "Cambiar a vista de lista" else "Cambiar a vista de cuadrícula",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -120,451 +291,525 @@ fun PlanesMenuScreen(navController: NavController) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            menuItems.forEach { item ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(120.dp)
-                        .clickable { navController.navigate(item.route) },
-                    shape = RoundedCornerShape(24.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    )
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        item.color.copy(alpha = 0.15f),
-                                        item.color.copy(alpha = 0.05f)
-                                    )
-                                )
-                            )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(20.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                modifier = Modifier.size(56.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                color = item.color.copy(alpha = 0.2f)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = item.icon,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(32.dp),
-                                        tint = item.color
-                                    )
-                                }
-                            }
-                            
-                            Spacer(modifier = Modifier.width(20.dp))
-                            
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = item.title,
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 18.sp
-                                    ),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = item.subtitle,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-                }
-            }
-            
-            // Tarjeta de Recordatorio (Intermactiva / Reverted Color)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 120.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .clickable(enabled = !isPremium) { isTapped = !isTapped },
+                    .padding(16.dp, 8.dp, 16.dp, 8.dp),
                 shape = RoundedCornerShape(24.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .animateContentSize()
-                        .background(
-                            brush = Brush.horizontalGradient(
-                                colors = listOf(
-                                    Color(0xFF9C27B0).copy(alpha = 0.15f),
-                                    Color(0xFF9C27B0).copy(alpha = 0.05f)
-                                )
-                            )
-                        )
+                        .padding(16.dp)
                 ) {
                     Column {
-                        Box(modifier = Modifier.fillMaxWidth().height(120.dp)) {
-                            AnimatedContent(
-                                targetState = isTapped && !isPremium,
-                                transitionSpec = {
-                                    (fadeIn(animationSpec = tween(300)) + scaleIn(initialScale = 0.8f))
-                                        .togetherWith(fadeOut(animationSpec = tween(300)) + scaleOut(targetScale = 0.8f))
-                                },
-                                label = "PremiumMessageAnimation"
-                            ) { showingPremiumMessage ->
-                                if (showingPremiumMessage) {
-                                    // Mensaje Premium al tocar (Purple theme)
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(120.dp)
-                                            .padding(20.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text(
-                                                text = "Esta función es premium,",
-                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                textAlign = TextAlign.Center
-                                            )
-                                            Text(
-                                                text = "activa tu suscripción en los ajustes.",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                textAlign = TextAlign.Center
-                                            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f))
+                                        .clickable {
+                                            if (activeSubscriptions.size > 1) {
+                                                VibrationManager.vibrate(context)
+                                                selectedSimIndex = if (selectedSimIndex == 0) 1 else 0
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SimCard,
+                                        contentDescription = "Cambiar SIM",
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(20.dp)
+                                    )
 
+                                    // Badge para el número de SIM
+                                    Surface(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .offset(x = (-2).dp, y = (-2).dp)
+                                            .size(16.dp),
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primaryContainer)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = (selectedSimIndex + 1).toString(),
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.Black,
+                                                    fontSize = 10.sp
+                                                ),
+                                                color = MaterialTheme.colorScheme.onPrimary
+                                            )
                                         }
                                     }
-                                } else {
-                                    // Contenido Normal (Purple theme)
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Saldo y Recursos",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    if (ultimaConsulta != null) {
+                                        Text(
+                                            text = "Actualizado: $ultimaConsulta",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                }
+                            }
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                IconButton(
+                                    onClick = { consultarTodo() },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = "Actualizar",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            BalanceItem(
+                                icon = Icons.Default.AccountBalance,
+                                label = "Saldo",
+                                value = saldo,
+                                color = Color(0xFF4CAF50),
+                                modifier = Modifier.weight(1f)
+                            )
+                            BalanceItem(
+                                icon = Icons.Default.DataUsage,
+                                label = "Datos",
+                                value = datos,
+                                color = Color(0xFF2196F3),
+                                modifier = Modifier.weight(1f)
+                            )
+                            BalanceItem(
+                                icon = Icons.Default.Phone,
+                                label = "Voz",
+                                value = voz,
+                                color = Color(0xFFFF9800),
+                                modifier = Modifier.weight(1f)
+                            )
+                            BalanceItem(
+                                icon = Icons.Default.Email,
+                                label = "SMS",
+                                value = sms,
+                                color = Color(0xFF9C27B0),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp, 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Event,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (vencimiento != "N/A") "Vence: $vencimiento" else "Vencimiento: ---",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 12.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp, 8.dp, 16.dp, 16.dp)
+            ) {
+                Crossfade(
+                targetState = isGridView,
+                animationSpec = tween(
+                    durationMillis = 300,
+                    easing = FastOutSlowInEasing
+                ),
+                label = "ViewTransition"
+            ) { gridView ->
+                if (gridView) {
+                    Column {
+                        menuItems.chunked(2).forEach { rowItems ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                rowItems.forEach { item ->
+                                    Card(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(160.dp)
+                                            .padding(vertical = 6.dp)
+                                            .clickable { navController.navigate(item.route) },
+                                        shape = RoundedCornerShape(20.dp),
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surface
+                                        )
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(
+                                                    brush = Brush.verticalGradient(
+                                                        colors = listOf(
+                                                            item.color.copy(alpha = 0.12f),
+                                                            item.color.copy(alpha = 0.03f)
+                                                        )
+                                                    )
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                modifier = Modifier.padding(12.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = item.icon,
+                                                    contentDescription = null,
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .padding(bottom = 8.dp),
+                                                    tint = item.color
+                                                )
+                                                Text(
+                                                    text = item.title,
+                                                    style = MaterialTheme.typography.labelLarge.copy(
+                                                        fontWeight = FontWeight.Bold,
+                                                        lineHeight = 18.sp
+                                                    ),
+                                                    textAlign = TextAlign.Center,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = item.subtitle,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    textAlign = TextAlign.Center,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                if (rowItems.size == 1) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        menuItems.forEach { item ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(120.dp)
+                                    .clickable { navController.navigate(item.route) },
+                                shape = RoundedCornerShape(24.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                )
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            brush = Brush.horizontalGradient(
+                                                colors = listOf(
+                                                    item.color.copy(alpha = 0.15f),
+                                                    item.color.copy(alpha = 0.05f)
+                                                )
+                                            )
+                                        )
+                                ) {
                                     Row(
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(120.dp)
+                                            .fillMaxSize()
                                             .padding(20.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Surface(
                                             modifier = Modifier.size(56.dp),
                                             shape = RoundedCornerShape(16.dp),
-                                            color = Color(0xFF9C27B0).copy(alpha = 0.2f)
+                                            color = item.color.copy(alpha = 0.2f)
                                         ) {
                                             Box(contentAlignment = Alignment.Center) {
                                                 Icon(
-                                                    imageVector = Icons.Default.Notifications,
+                                                    imageVector = item.icon,
                                                     contentDescription = null,
                                                     modifier = Modifier.size(32.dp),
-                                                    tint = Color(0xFF9C27B0)
+                                                    tint = item.color
                                                 )
                                             }
                                         }
-                                        
+
                                         Spacer(modifier = Modifier.width(20.dp))
-                                        
+
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "Recordatorio",
+                                                text = item.title,
                                                 style = MaterialTheme.typography.titleMedium.copy(
                                                     fontWeight = FontWeight.Bold,
                                                     fontSize = 18.sp
                                                 ),
-                                                color = if (!isPremium) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface
+                                                color = MaterialTheme.colorScheme.onSurface
                                             )
-                                            
                                             Text(
-                                                text = "Aviso a la vigencia de los datos",
+                                                text = item.subtitle,
                                                 style = MaterialTheme.typography.bodyMedium,
-                                                color = if (!isPremium) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
 
-                                        if (isPremium) {
-                                            Switch(
-                                                checked = isEnabled,
-                                                onCheckedChange = { checked ->
-                                                    isEnabled = checked
-                                                    context.getSharedPreferences("recordatorio_prefs", Context.MODE_PRIVATE)
-                                                        .edit()
-                                                        .putBoolean("recordatorio_enabled", checked)
-                                                        .apply()
-                                                },
-                                                colors = SwitchDefaults.colors(
-                                                    checkedThumbColor = MaterialTheme.colorScheme.primary,
-                                                    checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                                                )
-                                            )
-                                        } else {
-                                            Icon(
-                                                imageVector = Icons.Default.Lock,
-                                                contentDescription = null,
-                                                tint = Color(0xFF9C27B0).copy(alpha = 0.7f),
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Flecha de expansión (Overlay en el header de 120dp)
-                            if (isPremium && !(isTapped && !isPremium)) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .align(Alignment.BottomCenter)
-                                        .clickable { isExpanded = !isExpanded }
-                                        .padding(bottom = 2.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                        contentDescription = "Ver detalles",
-                                        tint = Color(0xFF9C27B0).copy(alpha = 0.7f),
-                                        modifier = Modifier.size(28.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Sección expandible (Datos)
-                        AnimatedVisibility(
-                            visible = isPremium && isExpanded && !(isTapped && !isPremium),
-                            enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
-                            exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(start = 20.dp, end = 20.dp, bottom = 12.dp)
-                            ) {
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(bottom = 8.dp),
-                                    color = Color(0xFF9C27B0).copy(alpha = 0.1f)
-                                )
-                                
-                                if (lastSmsTimestamp > 0) {
-                                    val lastDate = Date(lastSmsTimestamp)
-                                    val nextDate = Date(lastSmsTimestamp + (35L * 24 * 60 * 60 * 1000))
-                                    
-                                    DetailItem(
-                                        "Compra del Plan:",
-                                        dateFormatter.format(lastDate),
-                                        Icons.Default.History,
-                                        trailingContent = {
-                                            IconButton(
-                                                onClick = { showDatePicker = true },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Edit,
-                                                    contentDescription = "Editar fecha",
-                                                    tint = Color(0xFF9C27B0),
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
-                                        }
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    DetailItem(
-                                        "Vence el:",
-                                        nextAlertDateFormatter.format(nextDate),
-                                        Icons.Default.Event
-                                    )
-                                } else {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Text(
-                                            text = "No se han registrado mensajes de ETECSA.",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                        Icon(
+                                            imageVector = Icons.Default.ChevronRight,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                         )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Button(
-                                            onClick = { showDatePicker = true },
-                                            modifier = Modifier.height(36.dp),
-                                            contentPadding = PaddingValues(horizontal = 16.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0))
-                                        ) {
-                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Ingresar fecha", style = MaterialTheme.typography.labelLarge)
-                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
+                }
             }
+        }
+    }
 
-            if (showDatePicker) {
-                Dialog(onDismissRequest = { showDatePicker = false }) {
+    if (showErrorDialog) {
+        Dialog(
+            onDismissRequest = { showErrorDialog = false },
+            properties = DialogProperties(
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true,
+                usePlatformDefaultWidth = false
+            )
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .wrapContentHeight(),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Icono de error
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .background(
+                                MaterialTheme.colorScheme.errorContainer,
+                                shape = RoundedCornerShape(16.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Error,
+                            contentDescription = "Error",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Título
+                    Text(
+                        text = "Error al actualizar",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Contenido del mensaje
                     Surface(
-                        shape = RoundedCornerShape(32.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 6.dp,
-                        modifier = Modifier.width(300.dp) // Tamaño exterior minimalista
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight()
+                            .background(
+                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(12.dp)
+                            ),
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.Transparent
                     ) {
                         Column(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            modifier = Modifier.padding(16.dp)
                         ) {
-                            // Box que contiene el DatePicker con espacio suficiente pero escalado
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(360.dp), // Aumentado aún más para garantizar cero solapamiento
-                                contentAlignment = Alignment.Center
-                            ) {
-                                DatePicker(
-                                    state = datePickerState,
-                                    title = null,
-                                    headline = null,
-                                    showModeToggle = false,
-                                    modifier = Modifier
-                                        .requiredWidth(360.dp) // Engañamos al componente dándole su ancho natural
-                                        .scale(0.83f), // Lo encogemos visualmente para que quepa en 300dp
-                                    colors = DatePickerDefaults.colors(
-                                        containerColor = Color.Transparent,
-                                        titleContentColor = Color(0xFF9C27B0),
-                                        headlineContentColor = Color(0xFF9C27B0),
-                                        weekdayContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                        subheadContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                        yearContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        currentYearContentColor = Color(0xFF9C27B0),
-                                        selectedYearContentColor = Color.White,
-                                        selectedYearContainerColor = Color(0xFF9C27B0),
-                                        dayContentColor = MaterialTheme.colorScheme.onSurface,
-                                        selectedDayContentColor = Color.White,
-                                        selectedDayContainerColor = Color(0xFF9C27B0),
-                                        todayContentColor = Color(0xFF9C27B0),
-                                        todayDateBorderColor = Color(0xFF9C27B0)
-                                    )
-                                )
-                            }
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.End,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                TextButton(
-                                    onClick = { showDatePicker = false },
-                                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
-                                ) {
-                                    Text("Cancelar", style = MaterialTheme.typography.labelLarge)
-                                }
-                                
-                                Spacer(modifier = Modifier.width(8.dp))
-                                
-                                Button(
-                                    onClick = {
-                                        datePickerState.selectedDateMillis?.let { utcMillis ->
-                                            val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-                                            calendar.timeInMillis = utcMillis
-                                            
-                                            val localCalendar = Calendar.getInstance()
-                                            localCalendar.set(
-                                                calendar.get(Calendar.YEAR),
-                                                calendar.get(Calendar.MONTH),
-                                                calendar.get(Calendar.DAY_OF_MONTH),
-                                                12, 0, 0
-                                            )
-                                            
-                                            val finalMillis = localCalendar.timeInMillis
-                                            lastSmsTimestamp = finalMillis
-                                            recordatorioPrefs.edit()
-                                                .putLong("hidden_start_date", finalMillis)
-                                                .putInt("hidden_days_passed", 0)
-                                                .putInt("last_notified_day", -1) // Reset notifications logic
-                                                .apply()
-                                            
-                                            // Schedule and Trigger immediate check
-                                            NotificationScheduler.scheduleDailyCheck(context)
-                                            NotificationScheduler.triggerImmediateCheck(context)
-                                        }
-                                        showDatePicker = false
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)),
-                                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
-                                ) {
-                                    Text("Confirmar", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
-                                }
-                            }
+                            Text(
+                                text = errorMessage,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Botón de acción
+                    Button(
+                        onClick = { showErrorDialog = false },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ),
+                        elevation = ButtonDefaults.buttonElevation(
+                            defaultElevation = 0.dp,
+                            pressedElevation = 2.dp
+                        )
+                    ) {
+                        Text(
+                            text = "Cerrar",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp
+                            )
+                        )
                     }
                 }
             }
-
-
         }
     }
 }
 
-data class MenuCardItem(
-    val title: String,
-    val subtitle: String,
-    val icon: ImageVector,
-    val color: Color,
-    val route: String
-)
+fun parseUssdResponse(response: String): Map<String, String> {
+    val result = mutableMapOf<String, String>()
 
-@Composable
-fun DetailItem(
-    label: String, 
-    value: String, 
-    icon: ImageVector,
-    trailingContent: @Composable (() -> Unit)? = null
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-            tint = Color(0xFF9C27B0)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
-        trailingContent?.invoke()
+    android.util.Log.d("USSD", "Respuesta completa: $response")
+
+    // Buscar cada sección directamente en la respuesta completa
+    val saldoPattern = Regex("Saldo: ([\\d.]+\\s*[A-Z]+)")
+    val datosPattern = Regex("Datos: ([\\d.]+\\s*[A-Z]+)")
+    val vozPattern = Regex("Voz: ([\\d:]+)")
+    val smsPattern = Regex("SMS: (\\d+)")
+    val vencePattern = Regex("vence (\\d{2}-\\d{2}-\\d{2})")
+
+    val saldoMatch = saldoPattern.find(response)
+    if (saldoMatch != null) {
+        val value = saldoMatch.groupValues[1].trim().replace("CUP", "").trim()
+        android.util.Log.d("USSD", "Saldo encontrado: $value")
+        result["saldo"] = value
     }
+
+    val datosMatch = datosPattern.find(response)
+    if (datosMatch != null) {
+        val value = datosMatch.groupValues[1].trim()
+        android.util.Log.d("USSD", "Datos encontrado: $value")
+        result["datos"] = value
+    }
+
+    val vozMatch = vozPattern.find(response)
+    if (vozMatch != null) {
+        val value = vozMatch.groupValues[1].trim()
+        android.util.Log.d("USSD", "Voz encontrado: $value")
+        result["voz"] = value
+    }
+
+    val smsMatch = smsPattern.find(response)
+    if (smsMatch != null) {
+        val value = smsMatch.groupValues[1].trim()
+        android.util.Log.d("USSD", "SMS encontrado: $value")
+        result["sms"] = value
+    }
+
+    val venceMatch = vencePattern.find(response)
+    if (venceMatch != null) {
+        val fecha = venceMatch.groupValues[1]
+        android.util.Log.d("USSD", "Vencimiento encontrado: $fecha")
+        result["vencimiento"] = fecha
+    }
+
+    android.util.Log.d("USSD", "Resultado final: $result")
+    return result
 }
+
+fun extractValueFromLine(line: String): String {
+    android.util.Log.d("USSD", "Extrayendo valor de: $line")
+
+    val colonIndex = line.indexOf(":")
+    if (colonIndex != -1) {
+        val value = line.substring(colonIndex + 1).trim()
+        android.util.Log.d("USSD", "Valor por ':': $value")
+        return value
+    }
+
+    android.util.Log.d("USSD", "Retornando línea completa: $line")
+    return line.trim()
+}
+

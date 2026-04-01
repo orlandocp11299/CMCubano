@@ -23,10 +23,10 @@ android {
 
     defaultConfig {
         applicationId = "cu.cuban.cmcubano"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.6.090226 beta"
+        versionCode = 19
+        versionName = "0.8.261105 beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -154,4 +154,10 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.gson)
     implementation(libs.okhttp.logging)
+
+    // Supabase
+    implementation(platform(libs.supabase.bom))
+    implementation(libs.supabase.postgrest)
+    implementation(libs.ktor.client.okhttp)
+    implementation(libs.jsoup)
 }
