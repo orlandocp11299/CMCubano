@@ -2,14 +2,18 @@ package cu.cuban.cmcubano.screens
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.widget.Toast
 import cu.cuban.cmcubano.NotificationService
 import cu.cuban.cmcubano.DataPlanWidgetProvider
 import cu.cuban.cmcubano.DataUsageWidgetProvider
+import cu.cuban.cmcubano.services.FloatingBubbleService
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -32,6 +36,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -49,6 +54,9 @@ fun ControlDatosSettingsScreen(navController: NavController) {
     
     var showLiveNotification by remember { mutableStateOf(prefs.getBoolean("data_usage_live_notification", false)) }
     var livePeriod by remember { mutableStateOf(prefs.getString("live_notification_period", "Hoy") ?: "Hoy") }
+    var showFloatingBubble by remember { mutableStateOf(prefs.getBoolean("floating_bubble_enabled", false)) }
+    var dataSource by remember { mutableStateOf(prefs.getString("bubble_data_source", "auto") ?: "auto") }
+    var decimalFormat by remember { mutableStateOf(prefs.getString("decimal_format", "%.0f") ?: "%.0f") }
     
     var dataLimit by remember { mutableStateOf(prefs.getString("data_plan_limit", "") ?: "") }
     var dataUnit by remember { mutableStateOf(prefs.getString("data_plan_unit", "GB") ?: "GB") }
@@ -281,6 +289,196 @@ fun ControlDatosSettingsScreen(navController: NavController) {
                                             fontSize = 12.sp
                                         )
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                SettingsSwitch(
+                    title = "Burbuja Flotante",
+                    subtitle = "Burbuja flotante con el consumo de tus datos y el tráfico de red",
+                    checked = showFloatingBubble,
+                    onCheckedChange = { enabled ->
+                        if (enabled) {
+                            // Check if overlay permission is granted
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                if (!Settings.canDrawOverlays(context)) {
+                                    // Request overlay permission
+                                    Toast.makeText(context, "Se requiere permiso para aparecer encima", Toast.LENGTH_LONG).show()
+                                    val intent = Intent(
+                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:" + context.packageName)
+                                    )
+                                    context.startActivity(intent)
+                                } else {
+                                    // Permission already granted, start service
+                                    showFloatingBubble = true
+                                    prefs.edit().putBoolean("floating_bubble_enabled", true).apply()
+                                    VibrationManager.vibrate(context)
+                                    
+                                    val intent = Intent(context, FloatingBubbleService::class.java)
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        context.startForegroundService(intent)
+                                    } else {
+                                        context.startService(intent)
+                                    }
+                                }
+                            } else {
+                                // No need for permission on older versions
+                                showFloatingBubble = true
+                                prefs.edit().putBoolean("floating_bubble_enabled", true).apply()
+                                VibrationManager.vibrate(context)
+                                
+                                val intent = Intent(context, FloatingBubbleService::class.java)
+                                context.startService(intent)
+                            }
+                        } else {
+                            // Stop service
+                            showFloatingBubble = false
+                            prefs.edit().putBoolean("floating_bubble_enabled", false).apply()
+                            VibrationManager.vibrate(context)
+                            
+                            val intent = Intent(context, FloatingBubbleService::class.java)
+                            context.stopService(intent)
+                        }
+                    }
+                )
+
+                AnimatedVisibility(visible = showFloatingBubble) {
+                    var hideWhenOffline by remember { mutableStateOf(prefs.getBoolean("bubble_hide_offline", false)) }
+                    
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SettingsSwitch(
+                            title = "Ocultar si no hay conexión",
+                            subtitle = "Ocultar automáticamente la burbuja cuando no haya internet",
+                            checked = hideWhenOffline,
+                            onCheckedChange = { enabled ->
+                                hideWhenOffline = enabled
+                                prefs.edit().putBoolean("bubble_hide_offline", enabled).apply()
+                                VibrationManager.vibrate(context)
+                                
+                                // Notificar al servicio para que se actualice inmediatamente
+                                val intent = Intent(context, FloatingBubbleService::class.java)
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    context.startForegroundService(intent)
+                                } else {
+                                    context.startService(intent)
+                                }
+                            }
+                        )
+
+                        Text(
+                            "Fuente de datos",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        val sourceOptions = listOf(
+                            "Auto" to "auto",
+                            "Móvil" to "mobile",
+                            "WiFi" to "wifi",
+                            "Todo" to "both"
+                        )
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            sourceOptions.forEach { (label, value) ->
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            if (dataSource != value) {
+                                                dataSource = value
+                                                prefs.edit().putString("bubble_data_source", value).apply()
+                                                VibrationManager.vibrate(context)
+                                                // Reiniciar servicio
+                                                val intent = Intent(context, FloatingBubbleService::class.java)
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                    context.startForegroundService(intent)
+                                                } else {
+                                                    context.startService(intent)
+                                                }
+                                            }
+                                        }
+                                        .background(
+                                            if (dataSource == value) MaterialTheme.colorScheme.primaryContainer 
+                                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                        )
+                                        .padding(vertical = 12.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (dataSource == value) FontWeight.Bold else FontWeight.Normal,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            "Decimales a mostrar",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        val decimalOptions = listOf(
+                            "X" to "%.0f",
+                            "X.X" to "%.1f",
+                            "X.XX" to "%.2f"
+                        )
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            decimalOptions.forEach { (label, format) ->
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            decimalFormat = format
+                                            prefs.edit().putString("decimal_format", format).apply()
+                                            VibrationManager.vibrate(context)
+                                            // Reiniciar servicio para aplicar cambios
+                                            val intent = Intent(context, FloatingBubbleService::class.java)
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                context.startForegroundService(intent)
+                                            } else {
+                                                context.startService(intent)
+                                            }
+                                        }
+                                        .background(
+                                            if (decimalFormat == format) MaterialTheme.colorScheme.primaryContainer 
+                                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                        )
+                                        .padding(vertical = 12.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (decimalFormat == format) FontWeight.Bold else FontWeight.Normal,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        textAlign = TextAlign.Center
+                                    )
                                 }
                             }
                         }

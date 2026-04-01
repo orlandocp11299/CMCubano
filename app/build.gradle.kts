@@ -25,8 +25,8 @@ android {
         applicationId = "cu.cuban.cmcubano"
         minSdk = 24
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.6.090226 beta"
+        versionCode = 10
+        versionName = "0.7.010426 beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -154,4 +154,9 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.gson)
     implementation(libs.okhttp.logging)
+
+    // Supabase
+    implementation(platform(libs.supabase.bom))
+    implementation(libs.supabase.postgrest)
+    implementation(libs.ktor.client.okhttp)
 }

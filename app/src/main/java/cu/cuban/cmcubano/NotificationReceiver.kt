@@ -113,33 +113,44 @@ class NotificationReceiver : BroadcastReceiver() {
     }
     
     private fun showNotification(context: Context, title: String, message: String, notificationId: Int) {
-        Log.d(TAG, "Creando canal de notificación")
-        createNotificationChannel(context)
+        Log.d(TAG, "Preparando alerta: suspendiendo otros servicios")
         
-        // Verificar permisos de notificación
+        // 1. Suspender servicios de monitoreo para dejar el panel limpio
+        val suspendIntent = Intent(context, NotificationService::class.java).apply {
+            action = NotificationService.ACTION_SUSPEND_FOR_ALERT
+        }
+        context.startService(suspendIntent)
+
+        // 2. Preparar el intent para restaurar cuando la alerta sea descartada o pulsada
+        val restoreIntent = Intent(context, NotificationService::class.java).apply {
+            action = NotificationService.ACTION_RESUME_FROM_ALERT
+        }
+        val restorePendingIntent = android.app.PendingIntent.getService(
+            context, 100, restoreIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+
+        createNotificationChannel(context)
         val notificationManager = NotificationManagerCompat.from(context)
+        
         if (notificationManager.areNotificationsEnabled()) {
-            Log.d(TAG, "Permisos de notificación concedidos")
-            
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
                 .setContentTitle(title)
                 .setContentText(message)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setAutoCancel(true)
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setDeleteIntent(restorePendingIntent) // Restaurar si se desliza (descartar)
+                .setContentIntent(restorePendingIntent) // Restaurar si se toca
                 .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             
             try {
                 notificationManager.notify(notificationId, builder.build())
-                Log.d(TAG, "Notificación enviada exitosamente")
-            } catch (e: SecurityException) {
-                Log.e(TAG, "Error de seguridad al mostrar notificación: ${e.message}")
+                Log.d(TAG, "Alerta mostrada e hilos de red pausados")
             } catch (e: Exception) {
-                Log.e(TAG, "Error general al mostrar notificación: ${e.message}")
+                Log.e(TAG, "Error al mostrar notificación: ${e.message}")
             }
-        } else {
-            Log.w(TAG, "Permisos de notificación no concedidos")
         }
     }
     

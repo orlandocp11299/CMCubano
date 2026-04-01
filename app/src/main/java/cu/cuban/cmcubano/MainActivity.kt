@@ -58,6 +58,11 @@ import androidx.navigation.navArgument
 import cu.cuban.cmcubano.screens.WelcomeDialog
 import cu.cuban.cmcubano.screens.*
 import cu.cuban.cmcubano.ui.theme.CMCubanoTheme
+import cu.cuban.cmcubano.models.AppUpdate
+import cu.cuban.cmcubano.utils.SupabaseManager
+import io.github.jan.supabase.postgrest.from
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     
@@ -107,6 +112,23 @@ class MainActivity : ComponentActivity() {
             }
         }
         
+        // Verificar si se debe iniciar la burbuja flotante
+        if (dataPrefs.getBoolean("floating_bubble_enabled", false)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (android.provider.Settings.canDrawOverlays(this)) {
+                    val bubbleIntent = android.content.Intent(this, cu.cuban.cmcubano.services.FloatingBubbleService::class.java)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(bubbleIntent)
+                    } else {
+                        startService(bubbleIntent)
+                    }
+                }
+            } else {
+                val bubbleIntent = android.content.Intent(this, cu.cuban.cmcubano.services.FloatingBubbleService::class.java)
+                startService(bubbleIntent)
+            }
+        }
+        
         // Determinar destino inicial
         val navigateTo = intent?.getStringExtra("navigate_to")
         val startDest = when (navigateTo) {
@@ -127,6 +149,28 @@ class MainActivity : ComponentActivity() {
             // Estado para el mensaje de bienvenida
             var showWelcome by rememberSaveable { 
                 mutableStateOf(prefsState.getBoolean("show_welcome_screen", true)) 
+            }
+
+            // Estado para actualización
+            var appUpdate by remember { mutableStateOf<AppUpdate?>(null) }
+
+            // Comprobar actualizaciones al iniciar
+            LaunchedEffect(Unit) {
+                try {
+                    val latestUpdate = withContext(Dispatchers.IO) {
+                        SupabaseManager.client.from("app_updates")
+                            .select {
+                                order("version_code", order = io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                                limit(1)
+                            }.decodeSingleOrNull<AppUpdate>()
+                    }
+
+                    if (latestUpdate != null && latestUpdate.versionCode > BuildConfig.VERSION_CODE) {
+                        appUpdate = latestUpdate
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
 
             // Efecto para solicitar permisos solo después del mensaje de bienvenida
@@ -186,6 +230,14 @@ class MainActivity : ComponentActivity() {
                                 onDisableWelcome = {
                                     prefsState.edit().putBoolean("show_welcome_screen", false).apply()
                                 }
+                            )
+                        }
+
+                        // Diálogo de actualización
+                        appUpdate?.let { update ->
+                            UpdateDialog(
+                                update = update,
+                                onDismissRequest = { appUpdate = null }
                             )
                         }
                     }

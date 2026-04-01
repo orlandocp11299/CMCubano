@@ -155,7 +155,7 @@ class DataUsageService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Monitor de Datos Activo")
             .setContentText("Uso actual: ${formatBytes(usage)}")
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setSmallIcon(cu.cuban.cmcubano.R.drawable.outline_app_badging_24)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)

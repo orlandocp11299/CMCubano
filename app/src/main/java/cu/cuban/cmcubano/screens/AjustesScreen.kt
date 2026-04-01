@@ -537,10 +537,10 @@ fun AjustesScreen(navController: NavController) {
                         onClick = {
                             VibrationManager.vibrate(context)
                             try {
-                                val telegramIntent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=CMCubano"))
+                                val telegramIntent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=CMCubano_APK"))
                                 context.startActivity(telegramIntent)
                             } catch (e: Exception) {
-                                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/CMCubano"))
+                                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/CMCubano_APK"))
                                 context.startActivity(webIntent)
                             }
                         },

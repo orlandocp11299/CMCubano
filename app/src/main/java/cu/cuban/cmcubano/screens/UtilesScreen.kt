@@ -436,9 +436,8 @@ fun UtilesScreen(
 
     var serviceState by remember { mutableStateOf<ServiceState?>(null) }
 
-    var telephonyDisplayInfo by remember { mutableStateOf<TelephonyDisplayInfo?>(null) }
-
-    var physicalChannelConfigList by remember { mutableStateOf<List<PhysicalChannelConfig>>(emptyList()) }
+    var telephonyDisplayInfo by remember { mutableStateOf<Any?>(null) }
+    var physicalChannelConfigList by remember { mutableStateOf<List<Any>>(emptyList()) }
 
     var isProcessingCells by remember { mutableStateOf(false) }
 
@@ -536,7 +535,11 @@ fun UtilesScreen(
 
             }
 
-            val isDataEnabled = telephonyManager.isDataEnabled
+            val isDataEnabled = try {
+                telephonyManager.isDataEnabled
+            } catch (e: Exception) {
+                false
+            }
 
 
 
@@ -584,11 +587,17 @@ fun UtilesScreen(
 
         
 
-        val subId = activeSubscriptions.getOrNull(selectedSimIndex)?.subscriptionId ?: return@LaunchedEffect
+        val subId = activeSubscriptions.getOrNull(selectedSimIndex)?.subscriptionId
 
         val telephonyManagerBase = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
-        val specificTelephonyManager = telephonyManagerBase.createForSubscriptionId(subId)
+        val specificTelephonyManager = if (subId != null) {
+            telephonyManagerBase.createForSubscriptionId(subId)
+        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            telephonyManagerBase // Android 8/9: usar TelephonyManager por defecto
+        } else {
+            return@LaunchedEffect // Android 10+: sin subId no podemos continuar
+        }
 
         
 
@@ -669,19 +678,25 @@ fun UtilesScreen(
                     )
 
                 } else {
+                    // Fallback para Android 8/9 con protección de permisos y excepciones
+                    val hasLocation = ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.ACCESS_FINE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
 
-                    // Fallback para versiones antiguas
-
-                    val newCellInfo = specificTelephonyManager.allCellInfo ?: emptyList()
-
-                    if (isActive) {
-
-                        cellInfoList = newCellInfo
-
-                        updateTrigger.value++
-
+                    if (hasLocation) {
+                        val newCellInfo = try {
+                            specificTelephonyManager.allCellInfo ?: emptyList()
+                        } catch (e: SecurityException) {
+                            emptyList()
+                        } catch (e: RuntimeException) {
+                            // Algunos chips Mediatek lanzan RuntimeException en Android 8
+                            emptyList()
+                        }
+                        if (isActive) {
+                            cellInfoList = newCellInfo
+                            updateTrigger.value++
+                        }
                     }
-
                 }
 
                 
@@ -710,11 +725,17 @@ fun UtilesScreen(
 
 
 
-        val subId = activeSubscriptions.getOrNull(selectedSimIndex)?.subscriptionId ?: return@LaunchedEffect
+        val subId = activeSubscriptions.getOrNull(selectedSimIndex)?.subscriptionId
 
         val telephonyManagerBase = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
-        val specificTelephonyManager = telephonyManagerBase.createForSubscriptionId(subId)
+        val specificTelephonyManager = if (subId != null) {
+            telephonyManagerBase.createForSubscriptionId(subId)
+        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            telephonyManagerBase // Android 8/9: usar TelephonyManager por defecto
+        } else {
+            return@LaunchedEffect // Android 10+: sin subId no podemos continuar
+        }
 
 
 
@@ -859,63 +880,46 @@ fun UtilesScreen(
         } else {
 
             // Para versiones anteriores
-
-            val listener = object : PhoneStateListener() {
-
-                @Suppress("DEPRECATION")
-
-                override fun onCellInfoChanged(infoList: List<CellInfo>?) {
-
-                    cellInfoList = infoList ?: emptyList()
-
-                    updateTrigger.value++
-
+            @Suppress("DEPRECATION")
+            val listener = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                object : PhoneStateListener() {
+                    override fun onCellInfoChanged(infoList: List<CellInfo>?) {
+                        cellInfoList = infoList ?: emptyList()
+                        updateTrigger.value++
+                    }
+                    override fun onServiceStateChanged(state: ServiceState?) {
+                        serviceState = state
+                        updateTrigger.value++
+                    }
+                    override fun onDisplayInfoChanged(displayInfo: TelephonyDisplayInfo) {
+                        telephonyDisplayInfo = displayInfo
+                        updateTrigger.value++
+                    }
                 }
-
-
-
-                @Suppress("DEPRECATION")
-
-                override fun onServiceStateChanged(state: ServiceState?) {
-
-                    serviceState = state
-
-                    updateTrigger.value++
-
+            } else {
+                object : PhoneStateListener() {
+                    override fun onCellInfoChanged(infoList: List<CellInfo>?) {
+                        cellInfoList = infoList ?: emptyList()
+                        updateTrigger.value++
+                    }
+                    override fun onServiceStateChanged(state: ServiceState?) {
+                        serviceState = state
+                        updateTrigger.value++
+                    }
                 }
-
-
-
-                @Suppress("DEPRECATION")
-
-                override fun onDisplayInfoChanged(displayInfo: TelephonyDisplayInfo) {
-
-                    telephonyDisplayInfo = displayInfo
-
-                    updateTrigger.value++
-
-                }
-
             }
 
 
 
             @Suppress("DEPRECATION")
-
             val events = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-
-                PhoneStateListener.LISTEN_CELL_INFO or 
-
-                PhoneStateListener.LISTEN_SERVICE_STATE or 
-
+                PhoneStateListener.LISTEN_CELL_INFO or
+                PhoneStateListener.LISTEN_SERVICE_STATE or
                 PhoneStateListener.LISTEN_DISPLAY_INFO_CHANGED
-
             } else {
-
-                PhoneStateListener.LISTEN_CELL_INFO or 
-
+                // Android 10 y anteriores: LISTEN_DISPLAY_INFO_CHANGED no existe, NO incluirlo
+                PhoneStateListener.LISTEN_CELL_INFO or
                 PhoneStateListener.LISTEN_SERVICE_STATE
-
             }
 
             
@@ -2566,6 +2570,8 @@ internal fun NSGMainPanelOptimized(
 
 
 
+
+
                 if (badgeText.isNotEmpty()) {
 
                     Surface(
@@ -2609,30 +2615,19 @@ internal fun NSGMainPanelOptimized(
                 "LTE" -> {
 
                     val eNB = mainCell.ciInt?.let { v -> (v / 256).toString() } ?: "-"
-
-                    val ciValue = mainCell.ciInt?.let { String.format("%08d", it) } ?: "-"
-
-
+                    val lcid = mainCell.ciInt?.let { v -> (v % 256).toString() } ?: "-"
 
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-
                         Row(modifier = Modifier.fillMaxWidth()) {
-
                             NSGParameterItem(
-
-                                "eNB", 
-
-                                eNB, 
-
+                                "eNB | CID", 
+                                if (eNB != "-" && lcid != "-") "$eNB | $lcid" else eNB, 
                                 Modifier.weight(1f),
-
                                 isEnbClickable = true,
-
                                 onEnbClick = { onEnbClick(eNB) }
-
                             )
 
-                            NSGParameterItem("Band | Frec", "${mainCell.band} | ${getLteFrequency(mainCell.earfcn.toIntOrNull() ?: 0)}", Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally)
+                            NSGParameterItem("EARFCN", mainCell.earfcn, Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally)
 
                             NSGParameterItem("PCI", mainCell.pci, Modifier.weight(1f), horizontalAlignment = Alignment.End)
 
@@ -2642,7 +2637,7 @@ internal fun NSGMainPanelOptimized(
 
                             NSGParameterItem("TAC", mainCell.tac ?: "-", Modifier.weight(1f), horizontalAlignment = Alignment.Start)
 
-                            NSGParameterItem("EARFCN", mainCell.earfcn, Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally)
+                            NSGParameterItem("Band | Frec", "${mainCell.band} | ${getLteFrequency(mainCell.earfcn.toIntOrNull() ?: 0)}", Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally)
 
                             NSGParameterItem("TA", mainCell.ta ?: "-", Modifier.weight(1f), horizontalAlignment = Alignment.End)
 
@@ -3011,17 +3006,11 @@ fun NSGParameterItem(
                 text = value,
 
                 modifier = Modifier
-
                     .background(
-
                         color = MaterialTheme.colorScheme.primaryContainer,
-
-                        shape = RoundedCornerShape(8.dp)
-
+                        shape = RoundedCornerShape(6.dp)
                     )
-
-                    .padding(horizontal = 6.dp, vertical = 4.dp)
-
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
                     .clickable { onEnbClick() },
 
                 style = MaterialTheme.typography.bodyMedium,
@@ -3964,7 +3953,7 @@ fun PlanesSection(
 
         PlanItem("4.5GB", null, "240 CUP", "*133*1*4*1#"),
 
-        PlanItem("ToDus 600MB", null, "25 CUP", "*133*1*2#"),
+        PlanItem("ToDus 1GB", null, "25 CUP", "*133*1*2#"),
 
         PlanItem("Plan Diario 200MB", null, "25 CUP", "*133*1*3#")
 
@@ -5357,14 +5346,10 @@ internal data class BwComponent(
 // Modifica getCellRows para formatear los valores con un decimal y eNB con 6 dígitos
 
 private fun getCellRows(
-
     cellInfoList: List<CellInfo>, 
-
     serviceState: ServiceState?,
-
-    displayInfo: TelephonyDisplayInfo?,
-
-    physicalConfigList: List<PhysicalChannelConfig>,
+    displayInfo: Any?, // Cambiado de TelephonyDisplayInfo? para evitar crash en API < 30
+    physicalConfigList: List<Any>, // Cambiado de List<PhysicalChannelConfig>
 
     taCache: MutableMap<String, String>,
 
@@ -5453,11 +5438,13 @@ private fun getCellRows(
             // 1. Usar DisplayInfo para detección instantánea del estado lógico de CA (LTE+)
 
             val isDisplayCa = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && displayInfo != null) {
-
-                displayInfo.overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_CA ||
-
-                displayInfo.overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO
-
+                try {
+                    val di = displayInfo as android.telephony.TelephonyDisplayInfo
+                    di.overrideNetworkType == 1 || // OVERRIDE_NETWORK_TYPE_LTE_CA
+                    di.overrideNetworkType == 2    // OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO
+                } catch (e: Exception) {
+                    false
+                }
             } else false
 
 
@@ -5481,78 +5468,45 @@ private fun getCellRows(
 
 
             // FILTRADO MEJORADO: Solo contar PhysicalChannelConfigs que estén ACTIVOS
-
-            val activePhysicalConfigs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-
-                physicalConfigList.filter { config ->
-
-                    // Verificar que tenga datos válidos (banda, PCI o EARFCN)
-
-                    val hasValidBand = config.band in 1..88
+            val activePhysicalConfigs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                physicalConfigList.filter { configObj ->
+                    val config = configObj as? android.telephony.PhysicalChannelConfig ?: return@filter false
+                    
+                    val hasValidBand = try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            val band = config.band
+                            band in 1..88
+                        } else false
+                    } catch (e: Exception) { false }
 
                     val hasValidPci = try {
-
-                        val pci = config.physicalCellId
-
-                        pci >= 0 && pci < 504
-
-                    } catch (e: Exception) {
-
-                        false
-
-                    }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            val pci = config.physicalCellId
+                            pci >= 0 && pci < 504
+                        } else false
+                    } catch (e: Exception) { false }
 
                     val hasValidEarfcn = try {
-
-                        val earfcn = config.downlinkChannelNumber
-
-                        earfcn > 0 && earfcn != Int.MAX_VALUE
-
-                    } catch (e: Exception) {
-
-                        false
-
-                    }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            val earfcn = config.downlinkChannelNumber
+                            earfcn > 0 && earfcn != Int.MAX_VALUE
+                        } else false
+                    } catch (e: Exception) { false }
 
                     val hasValidData = hasValidBand || hasValidPci || hasValidEarfcn
 
-                    
-
                     // Verificar estado de conexión (Android 12+)
-
                     val isActive = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-
                         try {
-
                             // CONNECTION_STATUS_PRIMARY_SERVING = 1
-
                             // CONNECTION_STATUS_SECONDARY_SERVING = 2
-
                             config.connectionStatus == 1 || config.connectionStatus == 2
-
-                        } catch (e: Exception) {
-
-                            true // Si no podemos leer el estado, asumimos que está activo
-
-                        }
-
-                    } else {
-
-                        true // En versiones antiguas, asumimos que todos los configs reportados están activos
-
-                    }
-
+                        } catch (e: Exception) { true }
+                    } else true
                     
-
                     hasValidData && isActive
-
                 }
-
-            } else {
-
-                emptyList()
-
-            }
+            } else emptyList()
 
 
 
@@ -5640,13 +5594,20 @@ private fun getCellRows(
 
             if (activePhysicalConfigs.isNotEmpty()) {
 
-                val configsToProcess = if (isDataEnabled) activePhysicalConfigs else activePhysicalConfigs.take(1)
+                val shouldShowExtendedInfo = badgeText != "LTE"
+                val configsToProcess = if (isDataEnabled && shouldShowExtendedInfo) activePhysicalConfigs else activePhysicalConfigs.take(1)
 
 
 
-                configsToProcess.forEachIndexed { index, config ->
-
-                    val bwKhz = config.cellBandwidthDownlinkKhz
+                configsToProcess.forEachIndexed { index, configObj ->
+                    val config = configObj as? android.telephony.PhysicalChannelConfig ?: return@forEachIndexed
+                    
+                    var bwKhz = 0
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                           bwKhz = config.cellBandwidthDownlinkKhz
+                        }
+                    } catch (e: Exception) { }
 
                     if (bwKhz > 0 && bwKhz != Int.MAX_VALUE) {
 
@@ -5664,13 +5625,13 @@ private fun getCellRows(
 
                         try {
 
-                            pciFromConfig = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
 
                                 val pci = config.physicalCellId
 
-                                if (pci != Int.MAX_VALUE && pci >= 0) pci else null
+                                pciFromConfig = if (pci != Int.MAX_VALUE && pci >= 0) pci else null
 
-                            } else null
+                            }
 
                         } catch (e: Exception) {
 
@@ -5684,21 +5645,13 @@ private fun getCellRows(
 
                         try {
 
-                            earfcnFromConfig = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
 
-                                try {
+                                val channelNum = config.downlinkChannelNumber
 
-                                    val channelNum = config.downlinkChannelNumber
+                                earfcnFromConfig = if (channelNum > 0 && channelNum != Int.MAX_VALUE) channelNum else null
 
-                                    if (channelNum > 0 && channelNum != Int.MAX_VALUE) channelNum else null
-
-                                } catch (e: Exception) {
-
-                                    null
-
-                                }
-
-                            } else null
+                            }
 
                         } catch (e: Exception) {
 
@@ -5710,11 +5663,19 @@ private fun getCellRows(
 
                         // MÉTODO 1: config.band directo
 
-                        if (config.band in 1..88) {
+                        try {
 
-                            bandNum = config.band
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
 
-                        }
+                                if (config.band in 1..88) {
+
+                                    bandNum = config.band
+
+                                }
+
+                            }
+
+                        } catch (e: Exception) { }
 
 
 
@@ -5909,8 +5870,8 @@ private fun getCellRows(
             } else if (bandwidths.isNotEmpty()) {
 
                 // Fallback para Android antiguo
-
-                val bwsToProcess = if (isDataEnabled) bandwidths.toList() else bandwidths.take(1)
+                val shouldShowExtendedInfo = badgeText != "LTE"
+                val bwsToProcess = if (isDataEnabled && shouldShowExtendedInfo) bandwidths.toList() else bandwidths.take(1)
 
 
 
@@ -6315,8 +6276,7 @@ private fun getCellRows(
 
 
             // Post-proceso para marcar las celdas CA (solo si hay evidencia de agregación activa y datos activados)
-
-            if (isDataEnabled) {
+            if (isDataEnabled && badgeText != "LTE") {
 
                 val actualCaCount = when {
 
@@ -6868,94 +6828,54 @@ private fun getWcdmaFrequency(uarfcn: Int): String {
 
 
 
-private fun get3GNetworkType(displayInfo: TelephonyDisplayInfo?): String {
-
+private fun get3GNetworkType(displayInfo: Any?): String {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && displayInfo != null) {
-
+        val di = displayInfo as? android.telephony.TelephonyDisplayInfo ?: return "WCDMA"
         // Check override network types first (for LTE/5G)
-
-        when (displayInfo.overrideNetworkType) {
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA -> return "5G NSA"
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE -> return "5G+"
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_CA -> return "LTE+"
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO -> return "LTE Pro"
-
+        when (di.overrideNetworkType) {
+            3 -> return "5G NSA" // OVERRIDE_NETWORK_TYPE_NR_NSA
+            4 -> return "5G+" // OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE
+            1 -> return "LTE+" // OVERRIDE_NETWORK_TYPE_LTE_CA
+            2 -> return "LTE Pro" // OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO
         }
-
         
-
         // For 3G networks, use the network type to determine specific technology
-
-        return when (displayInfo.networkType) {
-
+        return when (di.networkType) {
             TelephonyManager.NETWORK_TYPE_HSDPA -> "HSDPA"
-
             TelephonyManager.NETWORK_TYPE_HSUPA -> "HSUPA"
-
             TelephonyManager.NETWORK_TYPE_HSPA -> "HSPA"
-
             TelephonyManager.NETWORK_TYPE_HSPAP -> "HSPA+"
-
             TelephonyManager.NETWORK_TYPE_UMTS -> "WCDMA"
-
             else -> "WCDMA"
-
         }
-
     }
-
     return "WCDMA"
-
 }
 
 
 
-private fun get2GNetworkType(displayInfo: TelephonyDisplayInfo?): String {
-
+private fun get2GNetworkType(displayInfo: Any?): String {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && displayInfo != null) {
-
+        val di = displayInfo as? android.telephony.TelephonyDisplayInfo ?: return "GPRS"
         // Check override network types first (for LTE/5G)
-
-        when (displayInfo.overrideNetworkType) {
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA -> return "5G NSA"
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE -> return "5G+"
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_CA -> return "LTE+"
-
-            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO -> return "LTE Pro"
-
+        when (di.overrideNetworkType) {
+            3 -> return "5G NSA" // OVERRIDE_NETWORK_TYPE_NR_NSA
+            4 -> return "5G+" // OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE
+            1 -> return "LTE+" // OVERRIDE_NETWORK_TYPE_LTE_CA
+            2 -> return "LTE Pro" // OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO
         }
-
         
-
         // For 2G networks, use the network type to determine specific technology
-
-        return when (displayInfo.networkType) {
-
+        return when (di.networkType) {
             TelephonyManager.NETWORK_TYPE_EDGE -> "EDGE"
-
             TelephonyManager.NETWORK_TYPE_GPRS -> "GPRS"
-
-            TelephonyManager.NETWORK_TYPE_GSM -> "GSM"
-
             TelephonyManager.NETWORK_TYPE_CDMA -> "CDMA"
-
             TelephonyManager.NETWORK_TYPE_1xRTT -> "1xRTT"
-
+            TelephonyManager.NETWORK_TYPE_IDEN -> "iDEN"
             else -> "GSM"
-
         }
-
     }
-
     return "GSM"
-
 }
 
 private fun getGsmBand(arfcn: Int): String {
