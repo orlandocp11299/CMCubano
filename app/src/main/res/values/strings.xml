@@ -6,4 +6,5 @@
     <string name="notification_channel_description">Notificaciones sobre vencimiento de recursos móviles</string>
     <string name="sms_permission_required">Se requieren permisos de SMS para detectar compras de planes</string>
     <string name="notification_permission_required">Se requieren permisos de notificación para recibir recordatorios</string>
+    <string name="widget_network_mode_label">Forzar 4G Widget</string>
 </resources>

@@ -29,6 +29,17 @@ import kotlinx.coroutines.delay
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import cu.cuban.cmcubano.utils.PremiumManager
+import cu.cuban.cmcubano.utils.VibrationManager
+import cu.cuban.cmcubano.utils.SupabaseManager
+import cu.cuban.cmcubano.models.AppUpdate
+import cu.cuban.cmcubano.BuildConfig
+import io.github.jan.supabase.postgrest.from
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,6 +100,54 @@ fun InicioScreen(navController: NavController) {
         }
     }
 
+    // Estados para comprobación manual de actualizaciones
+    var updateCheckState by remember { mutableStateOf<UpdateCheckState>(UpdateCheckState.Idle) }
+    var foundUpdateManual by remember { mutableStateOf<AppUpdate?>(null) }
+
+    fun isNetworkAvailable(context: Context): Boolean {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork ?: return false
+        val activeNetwork = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return when {
+            activeNetwork.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> true
+            activeNetwork.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> true
+            activeNetwork.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> true
+            else -> false
+        }
+    }
+
+    suspend fun checkManualUpdates() {
+        if (!isNetworkAvailable(context)) {
+            updateCheckState = UpdateCheckState.NoInternet
+            return
+        }
+
+        updateCheckState = UpdateCheckState.Checking
+        try {
+            val latestUpdate = withContext(Dispatchers.IO) {
+                SupabaseManager.client.from("app_updates")
+                    .select {
+                        order("version_code", order = io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                        limit(1)
+                    }.decodeSingleOrNull<AppUpdate>()
+            }
+
+            // Pequeño delay artificial para que la animación se vea bien si la red es muy rápida
+            delay(1200)
+
+            if (latestUpdate != null && latestUpdate.versionCode > BuildConfig.VERSION_CODE) {
+                foundUpdateManual = latestUpdate
+                updateCheckState = UpdateCheckState.Idle
+            } else {
+                updateCheckState = UpdateCheckState.UpToDate
+            }
+        } catch (e: Exception) {
+            updateCheckState = UpdateCheckState.Error("Error al conectar con el servidor: ${e.localizedMessage}")
+        }
+    }
+    
+    val scope = rememberCoroutineScope()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -129,11 +188,30 @@ fun InicioScreen(navController: NavController) {
             ) {
                 Text(
                     text = "CM Cubano",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     textAlign = TextAlign.Center
                 )
+
+                IconButton(
+                    onClick = {
+                        VibrationManager.vibrate(context)
+                        scope.launch { checkManualUpdates() }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Sync,
+                        contentDescription = "Buscar actualizaciones",
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
 
                 IconButton(
                     onClick = {
@@ -265,6 +343,19 @@ fun InicioScreen(navController: NavController) {
         }
 
         Spacer(modifier = Modifier.height(40.dp))
+    }
+
+    // Diálogos de actualización manual
+    CheckUpdateDialog(
+        state = updateCheckState,
+        onDismiss = { updateCheckState = UpdateCheckState.Idle }
+    )
+
+    foundUpdateManual?.let { update ->
+        UpdateDialog(
+            update = update,
+            onDismissRequest = { foundUpdateManual = null }
+        )
     }
 }
 

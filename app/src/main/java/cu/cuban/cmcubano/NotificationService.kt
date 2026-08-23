@@ -50,6 +50,7 @@ class NotificationService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var telephonyManager: TelephonyManager? = null
     private var notificationManager: NotificationManager? = null
+    private var isDestroyed = false
     
     // Telephony Listeners
     private var telephonyCallback: TelephonyCallback? = null // For API 31+
@@ -62,6 +63,10 @@ class NotificationService : Service() {
     private var currentPhysicalConfigList: List<PhysicalChannelConfig> = emptyList()
     private var monitoringJob: Job? = null
     private var dataUsageJob: Job? = null
+    
+    // Estado para restaurar tras alertas
+    private var wasMonitoringActive = false
+    private var wasDataMonitoringActive = false
     
     private var dataUsageManager: DataUsageManager? = null
     private var currentDataPeriod: String = "Hoy"
@@ -81,6 +86,9 @@ class NotificationService : Service() {
         const val ACTION_CHANGE_DATA_PERIOD = "cu.cuban.cmcubano.ACTION_CHANGE_DATA_PERIOD"
         const val ACTION_TOGGLE_REMINDER = "TOGGLE_REMINDER" // Legacy
         
+        const val ACTION_SUSPEND_FOR_ALERT = "cu.cuban.cmcubano.ACTION_SUSPEND_FOR_ALERT"
+        const val ACTION_RESUME_FROM_ALERT = "cu.cuban.cmcubano.ACTION_RESUME_FROM_ALERT"
+        
         private const val DATA_USAGE_NOTIFICATION_ID = 54321
         private const val DATA_USAGE_CHANNEL_ID = "DATA_USAGE_CHANNEL"
     }
@@ -95,6 +103,14 @@ class NotificationService : Service() {
         dataUsageManager = DataUsageManager(this)
         createNotificationChannel()
         createDataUsageChannel()
+        isDestroyed = false
+    }
+
+    override fun onDestroy() {
+        Log.d(TAG, "NotificationService Destroyed")
+        isDestroyed = true
+        serviceScope.cancel()
+        super.onDestroy()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -115,13 +131,18 @@ class NotificationService : Service() {
             ACTION_CHANGE_DATA_PERIOD -> {
                 val newPeriod = intent.getStringExtra("period") ?: "Hoy"
                 currentDataPeriod = newPeriod
-                updateDataUsageNotification()
+                serviceScope.launch { updateDataUsageNotification() }
             }
             // Preserve legacy functionality for simple reminders if needed, 
             // though strict separation is better. We'll handle legacy internally if called.
              ACTION_TOGGLE_REMINDER -> {
                  // Legacy reminder toggle logic here if needed, or simply ignore
-                 // For now, we assume this service is pivoting to Network Monitor
+             }
+             ACTION_SUSPEND_FOR_ALERT -> {
+                 suspendNotifications()
+             }
+             ACTION_RESUME_FROM_ALERT -> {
+                 resumeNotifications()
              }
         }
         return START_STICKY
@@ -218,10 +239,15 @@ class NotificationService : Service() {
         Log.d(TAG, "Stopping Network Monitoring")
         try {
             monitoringJob?.cancel()
+            monitoringJob = null
             locationCallback?.let { locationClient?.removeLocationUpdates(it) }
             unregisterTelephonyListeners()
             stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
+            
+            // Si no queda nada activo, parar el servicio
+            if (dataUsageJob == null) {
+                stopSelf()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping monitoring: ${e.message}")
         }
@@ -245,12 +271,18 @@ class NotificationService : Service() {
 
         dataUsageJob?.cancel()
         dataUsageJob = serviceScope.launch {
+            // Actualizar inmediatamente la primera vez
+            val prefs = getSharedPreferences("control_datos_prefs", Context.MODE_PRIVATE)
+            currentDataPeriod = prefs.getString("live_notification_period", "Hoy") ?: "Hoy"
+            updateDataUsageNotification()
+            
             while (isActive) {
-                // Leer periodo guardado antes de actualizar
-                val prefs = getSharedPreferences("control_datos_prefs", Context.MODE_PRIVATE)
-                currentDataPeriod = prefs.getString("live_notification_period", "Hoy") ?: "Hoy"
-                updateDataUsageNotification()
                 delay(15000) // Actualizar cada 15 segundos
+                if (isActive) {
+                    val p = getSharedPreferences("control_datos_prefs", Context.MODE_PRIVATE)
+                    currentDataPeriod = p.getString("live_notification_period", "Hoy") ?: "Hoy"
+                    updateDataUsageNotification()
+                }
             }
         }
     }
@@ -267,49 +299,71 @@ class NotificationService : Service() {
         }
     }
 
-    private fun updateDataUsageNotification() {
-        serviceScope.launch {
-            try {
-                val content = if (currentDataPeriod == "Plan") {
-                    val prefs = getSharedPreferences("control_datos_prefs", Context.MODE_PRIVATE)
-                    val pLimitStr = prefs.getString("data_plan_limit", "") ?: ""
-                    val pUnit = prefs.getString("data_plan_unit", "GB") ?: "GB"
-                    val pConsumedStr = prefs.getString("data_plan_consumed", "0") ?: "0"
-                    val pConsumed = pConsumedStr.toDoubleOrNull() ?: 0.0
-                    val pConsumedInMb = if (pUnit == "GB") pConsumed * 1024.0 else pConsumed
-                    val pLastUpdate = prefs.getLong("data_plan_last_update_time", 0L)
-                    
-                    val limitVal = pLimitStr.toDoubleOrNull() ?: 0.0
-                    val limitMb = if (pUnit == "GB") limitVal * 1024.0 else limitVal
-                    
-                    val deltaUsageBytes = dataUsageManager?.getMobileDataUsage(pLastUpdate, System.currentTimeMillis()) ?: 0L
-                    val deltaUsageMb = deltaUsageBytes / (1024.0 * 1024.0)
-                    val calculatedRealTimeMb = pConsumedInMb + deltaUsageMb
-                    val remainingMb = (limitMb - calculatedRealTimeMb).coerceAtLeast(0.0)
-                    
-                    val qStr = if (pUnit == "GB") String.format(java.util.Locale.US, "%.2f GB", limitMb / 1024.0) 
-                               else String.format(java.util.Locale.US, "%.0f MB", limitMb)
-                    
-                    val cStr = if (pUnit == "GB") String.format(java.util.Locale.US, "%.3f GB", calculatedRealTimeMb / 1024.0) 
-                               else String.format(java.util.Locale.US, "%.1f MB", calculatedRealTimeMb)
-                               
-                    val rStr = if (pUnit == "GB") String.format(java.util.Locale.US, "%.3f GB", remainingMb / 1024.0) 
-                               else String.format(java.util.Locale.US, "%.1f MB", remainingMb)
-                    
-                    "Plan: $qStr | Usado: $cStr\nRestante: $rStr"
-                } else {
-                    val (startTime, endTime) = calculateTimeRange(currentDataPeriod)
-                    val mobile = dataUsageManager?.getMobileDataUsage(startTime, endTime) ?: 0L
-                    val wifi = dataUsageManager?.getWifiDataUsage(startTime, endTime) ?: 0L
-                    val total = mobile + wifi
-                    "Móvil: ${formatBytes(mobile)} | WiFi: ${formatBytes(wifi)}\nTotal: ${formatBytes(total)}"
-                }
+    private fun suspendNotifications() {
+        Log.d(TAG, "Suspending notifications for alert")
+        wasMonitoringActive = monitoringJob != null
+        wasDataMonitoringActive = dataUsageJob != null
+        
+        if (wasMonitoringActive) stopMonitoring()
+        if (wasDataMonitoringActive) stopDataUsageMonitoring()
+    }
+
+    private fun resumeNotifications() {
+        Log.d(TAG, "Resuming notifications after alert: net=$wasMonitoringActive, data=$wasDataMonitoringActive")
+        if (wasMonitoringActive) {
+            startMonitoring()
+            wasMonitoringActive = false
+        }
+        if (wasDataMonitoringActive) {
+            startDataUsageMonitoring()
+            wasDataMonitoringActive = false
+        }
+    }
+
+    private suspend fun updateDataUsageNotification() {
+        if (isDestroyed) return
+        try {
+            val content = if (currentDataPeriod == "Plan") {
+                val prefs = getSharedPreferences("control_datos_prefs", Context.MODE_PRIVATE)
+                val pLimitStr = prefs.getString("data_plan_limit", "") ?: ""
+                val pUnit = prefs.getString("data_plan_unit", "GB") ?: "GB"
+                val pConsumedStr = prefs.getString("data_plan_consumed", "0") ?: "0"
+                val pConsumed = pConsumedStr.toDoubleOrNull() ?: 0.0
+                val pConsumedInMb = if (pUnit == "GB") pConsumed * 1024.0 else pConsumed
+                val pLastUpdate = prefs.getLong("data_plan_last_update_time", 0L)
                 
+                val limitVal = pLimitStr.toDoubleOrNull() ?: 0.0
+                val limitMb = if (pUnit == "GB") limitVal * 1024.0 else limitVal
+                
+                val deltaUsageBytes = dataUsageManager?.getMobileDataUsage(pLastUpdate, System.currentTimeMillis()) ?: 0L
+                val deltaUsageMb = deltaUsageBytes / (1024.0 * 1024.0)
+                val calculatedRealTimeMb = pConsumedInMb + deltaUsageMb
+                val remainingMb = (limitMb - calculatedRealTimeMb).coerceAtLeast(0.0)
+                
+                val qStr = if (pUnit == "GB") String.format(java.util.Locale.US, "%.2f GB", limitMb / 1024.0) 
+                           else String.format(java.util.Locale.US, "%.0f MB", limitMb)
+                
+                val cStr = if (pUnit == "GB") String.format(java.util.Locale.US, "%.3f GB", calculatedRealTimeMb / 1024.0) 
+                           else String.format(java.util.Locale.US, "%.1f MB", calculatedRealTimeMb)
+                           
+                val rStr = if (pUnit == "GB") String.format(java.util.Locale.US, "%.3f GB", remainingMb / 1024.0) 
+                           else String.format(java.util.Locale.US, "%.1f MB", remainingMb)
+                
+                "Plan: $qStr | Usado: $cStr\nRestante: $rStr"
+            } else {
+                val (startTime, endTime) = calculateTimeRange(currentDataPeriod)
+                val mobile = dataUsageManager?.getMobileDataUsage(startTime, endTime) ?: 0L
+                val wifi = dataUsageManager?.getWifiDataUsage(startTime, endTime) ?: 0L
+                val total = mobile + wifi
+                "Móvil: ${formatBytes(mobile)} | WiFi: ${formatBytes(wifi)}\nTotal: ${formatBytes(total)}"
+            }
+            
+            if (!isDestroyed) {
                 val notification = buildDataUsageNotification(content)
                 notificationManager?.notify(DATA_USAGE_NOTIFICATION_ID, notification)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error actualizando notificación de datos", e)
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error actualizando notificación de datos", e)
         }
     }
 
@@ -324,20 +378,27 @@ class NotificationService : Service() {
             this, 10, contentIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, DATA_USAGE_CHANNEL_ID)
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
+        val exitIntent = Intent(this, NotificationService::class.java).apply {
+            action = ACTION_STOP_DATA_MONITOR
         }
+        val exitPendingIntent = PendingIntent.getService(
+            this, 2, exitIntent, PendingIntent.FLAG_IMMUTABLE
+        )
 
-        builder.setContentTitle(title)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
             .setContentText(content)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.outline_app_badging_24)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setStyle(Notification.BigTextStyle().bigText(content))
+            .setSortKey("A_servicios_2_datos")
+            .setPriority(NotificationCompat.PRIORITY_MIN) // Mínima importancia para servicios de fondo
+            .setWhen(0) // Tiempo cero para que nunca se considere "nueva"
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Salir", exitPendingIntent)
 
         return builder.build()
     }
@@ -453,6 +514,7 @@ class NotificationService : Service() {
         var details = ""
         var isLte = false
         var activeCCs = 0
+        var netIcon = R.drawable.outline_android_cell_4_bar_off_24 // Por defecto para sin servicio
 
         if (!isInitializing) {
             val primaryCell = currentCellInfoList.firstOrNull { it.isRegistered }
@@ -513,10 +575,22 @@ class NotificationService : Service() {
                             // Usar la banda de frecuencia cuando hay nombre personalizado
                             val band = getLteBand(earfcn)
                             // Agregar + si hay agregación de portadoras y datos están activos
-                            if (hasCarrierAggregation) "$band+ $customEnbName" else "$band $customEnbName"
+                            if (hasCarrierAggregation) {
+                                netIcon = R.drawable.outline_4g_mobiledata_badge_24
+                                "$band+ $customEnbName"
+                            } else {
+                                netIcon = R.drawable.outline_4g_mobiledata_badge_24
+                                "$band $customEnbName"
+                            }
                         } else {
-                            // Para display normal: siempre LTE o LTE+, nunca LTE-A
-                            if (hasCarrierAggregation) "LTE+" else "LTE"
+                        // Para display normal: siempre LTE o LTE+, nunca LTE-A
+                        if (hasCarrierAggregation) {
+                            netIcon = R.drawable.outline_4g_mobiledata_badge_24
+                            "LTE+"
+                        } else {
+                            netIcon = R.drawable.outline_4g_mobiledata_badge_24
+                            "LTE"
+                        }
                         }
                         
                         // Actualizar tech para usar en el título
@@ -584,6 +658,8 @@ class NotificationService : Service() {
                         if (rscpVal == Int.MAX_VALUE) {
                             rscpVal = ss.dbm
                         }
+                        
+                        netIcon = R.drawable.outline_3g_mobiledata_badge_24
 
                         // 2. RSSI Extraction (Robust)
                         var rssiVal = Int.MAX_VALUE
@@ -624,6 +700,8 @@ class NotificationService : Service() {
                         val cid = primaryCell.cellIdentity.cid
                         val rssi = primaryCell.cellSignalStrength.dbm // RSSI for GSM
                         
+                        netIcon = R.drawable.outline_2g_mobiledata_badge_24
+                        
                         details = "CID: $cid  |  ARFCN: $arfcn\nRSSI: $rssi dBm"
                     }
                     else -> {}
@@ -638,63 +716,26 @@ class NotificationService : Service() {
         val title = "$tech  $freq"
         val text = if (details.isNotEmpty()) details else "Sin datos de la red"
         
-        // Icon Text logic: Use enhanced bitmap for all cases
-        val iconText = when {
-            isLte -> "4G"
-            tech.contains("GPRS") || tech.contains("EDGE") || tech.contains("GSM") || tech == "2G" -> "2G"
-            tech.contains("HSPA") || tech.contains("UMTS") || tech.contains("CDMA") || tech.contains("1x") || tech == "3G" -> "3G"
-            else -> "4G" // Fallback
-        }
-
         // --- Build Notification ---
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Use Native Builder for O+ to support dynamic Icon reliably
-            val builder = Notification.Builder(this, CHANNEL_ID)
-                .setContentIntent(pendingIntent)
-                .setOngoing(true)
-                .setContentTitle(title)
-                .setContentText(text)
-                .setVisibility(Notification.VISIBILITY_PUBLIC)
-                .addAction(Notification.Action.Builder(
-                    Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
-                    "Salir",
-                    exitPendingIntent
-                ).build())
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(netIcon)
+            .setSortKey("A_servicios_1_red")
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setWhen(0)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Salir", exitPendingIntent)
             
-            if (isInitializing) {
-                builder.setSmallIcon(android.R.drawable.ic_dialog_info)
-            } else {
-                // Use bitmap for all cases
-                val iconBitmap = createIconBitmap(iconText)
-                builder.setSmallIcon(Icon.createWithBitmap(iconBitmap))
-            }
-            
-            if (details.isNotEmpty()) {
-                builder.style = Notification.BigTextStyle().bigText(details)
-            }
-            
-            return builder.build()
-        } else {
-            // Use Compat Builder for older versions
-            val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentIntent(pendingIntent)
-                .setOngoing(true)
-                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Salir", exitPendingIntent)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setContentTitle(title)
-                .setContentText(text)
-
-            // Use enhanced bitmap for all cases
-            val iconBitmap = createIconBitmap(iconText)
-            val iconCompat = IconCompat.createWithBitmap(iconBitmap)
-            builder.setSmallIcon(iconCompat) 
-            
-            if (details.isNotEmpty()) {
-                builder.setStyle(NotificationCompat.BigTextStyle().bigText(details))
-            }
-            
-            return builder.build()
+        if (details.isNotEmpty()) {
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(details))
         }
+        
+        return builder.build()
     }
     
     private fun getNetworkTypeName(type: Int): String {
